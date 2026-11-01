@@ -3,22 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://hsk-meter.swiftbotlab.workers.dev; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://hsk-meter.swiftbotlab.workers.dev https://base-sepolia-rpc.publicnode.com https://ethereum-sepolia-rpc.publicnode.com https://arbitrum-sepolia-rpc.publicnode.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="description" content="Try HSK Meter without a wallet: verify a payment receipt on HashKey Chain mainnet and watch the paywall refuse a tampered quote.">
+<meta name="description" content="Try HSK Meter without a wallet: verify a payment receipt on HashKey Chain mainnet, watch the paywall refuse a tampered quote, and check a real HSP payment on-chain.">
 <title>Try HSK Meter</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22V10h3v5h4v-5h3v12h-3v-4h-4v4z' fill='%23fff'/%3E%3Crect x='20' y='15' width='4' height='7' rx='1' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css?v=5">
-<link rel="stylesheet" href="try.css?v=1">
-<script src="try.js?v=1" defer></script>
+<link rel="stylesheet" href="try.css?v=2">
+<script src="try.js?v=2" defer></script>
 </head>
 <body>
 <main class="wrap">
   <header class="top">
     <p class="brand">Swift Bot Labs · <a href="./">Live dashboard</a></p>
     <h1>Try HSK Meter</h1>
-    <p class="lede">No wallet and no money needed. Each button sends one free GET to the public endpoint
-      <span class="mono">hsk-meter.swiftbotlab.workers.dev</span>, which reads HashKey Chain mainnet and answers.
+    <p class="lede">No wallet and no money needed. Sections 1 and 2 send a free GET to the public endpoint
+      <span class="mono">hsk-meter.swiftbotlab.workers.dev</span>, which reads HashKey Chain mainnet. Section 3 reads a public testnet node directly.
       Nothing on this page signs or pays.</p>
   </header>
 
@@ -80,6 +80,25 @@
       makes it unknown to the server. The requestId is derived from the token and starts with the payer address, and the endpoint serves only
       after it reads that requestId as paid on the contract (getPayment), then serves it once.
       <a href="https://github.com/swiftbotlab/hsk-meter/blob/main/worker/src/core.js" target="_blank" rel="noopener">Read the code</a>.</p>
+  </section>
+
+  <section class="card" aria-labelledby="hsp-h">
+    <div class="card-head">
+      <h2 id="hsp-h">3. Check a real HSP payment on-chain</h2>
+      <p class="card-sub">Pick a payment made through HashKey's HSP server. Your browser reads the transaction from a public testnet node and checks it, without asking us.</p>
+    </div>
+    <form id="h-form" class="try-form" novalidate>
+      <label for="h-pick">Payment</label>
+      <select id="h-pick" class="try-input"></select>
+      <label for="h-to">Should have paid (recipient address)</label>
+      <input id="h-to" class="try-input mono" type="text" autocomplete="off" spellcheck="false" maxlength="42">
+      <div class="try-actions">
+        <button type="submit" class="btn btn-primary">Read it from the chain</button>
+        <button type="button" id="h-lie" class="btn">Try it with a wrong recipient</button>
+      </div>
+    </form>
+    <div id="h-out" class="try-out" role="status" aria-live="polite" hidden></div>
+    <p class="note">HSP's QA environment, test tokens on public testnets. The status and attribution in the list come from HSP's <span class="mono">query_payment</span>; this section adds what the chain itself shows. <a href="./#hsp-h">All receipts</a>.</p>
   </section>
 
   <footer class="foot">

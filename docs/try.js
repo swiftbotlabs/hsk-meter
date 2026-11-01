@@ -192,4 +192,98 @@
   }
   $('q-get').addEventListener('click', getQuote);
   for (const b of attackButtons()) b.addEventListener('click', () => attack(b.dataset.attack));
+
+  /* Section 3: a real HSP payment, read straight from a public testnet node. Everything from the node or the receipts
+     file is validated and written with textContent. */
+  const NODES = {
+    'base-sepolia': { url: 'https://base-sepolia-rpc.publicnode.com', chainId: '0x14a34', name: 'Base Sepolia' },
+    sepolia: { url: 'https://ethereum-sepolia-rpc.publicnode.com', chainId: '0xaa36a7', name: 'Ethereum Sepolia' },
+    'arbitrum-sepolia': { url: 'https://arbitrum-sepolia-rpc.publicnode.com', chainId: '0x66eee', name: 'Arbitrum Sepolia' }
+  };
+  const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+  const WRONG_TO = '0x000000000000000000000000000000000000dead';
+  const HSP_RELAYER = '0x85afd346143690afbec392524a8bae1e9ea8f500';   // the sender listed as permit2_spender in HSP's get_chain_config
+  let hspRows = [];
+
+  async function rpc(node, method, params) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 15000);
+    try {
+      const r = await fetch(node.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal, credentials: 'omit',
+        referrerPolicy: 'no-referrer', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+      const body = await r.json();
+      return body && body.result;
+    } finally { clearTimeout(t); }
+  }
+  function transfersOf(receipt) {
+    const out = [];
+    for (const l of (Array.isArray(receipt.logs) ? receipt.logs : []).slice(0, 200)) {
+      if (!l || !Array.isArray(l.topics) || l.topics.length !== 3 || l.topics[0] !== TRANSFER) continue;
+      if (!/^0x[0-9a-fA-F]{64}$/.test(String(l.data)) || !ADDR.test(String(l.address))) continue;
+      out.push({ token: l.address.toLowerCase(), from: '0x' + l.topics[1].slice(-40).toLowerCase(), to: '0x' + l.topics[2].slice(-40).toLowerCase(), value: BigInt(l.data) });
+    }
+    return out;
+  }
+  function checkLine(list, ok, name, detail) {
+    const li = el('li', ok ? 'ok' : 'bad');
+    li.appendChild(el('span', 'try-mark', ok ? '✓' : '✗'));
+    li.appendChild(el('span', 'try-check-name', name));
+    if (detail) li.appendChild(el('span', 'try-check-detail', detail));
+    list.appendChild(li);
+    return ok;
+  }
+  async function checkHsp(wantTo) {
+    const box = $('h-out');
+    box.hidden = false;
+    box.textContent = '';
+    const r = hspRows[Number($('h-pick').value)];
+    if (!r || !ADDR.test(wantTo)) { box.appendChild(el('p', 'try-err', 'Pick a payment and enter a 0x address of 40 hex characters.')); return; }
+    const node = NODES[r.network];
+    box.appendChild(el('p', 'try-wait', 'Reading ' + node.name + '…'));
+    let receipt = null, tx = null, cid = null;
+    try {
+      [cid, receipt, tx] = await Promise.all([rpc(node, 'eth_chainId', []), rpc(node, 'eth_getTransactionReceipt', [r.tx]), rpc(node, 'eth_getTransactionByHash', [r.tx])]);
+    } catch (e) { receipt = null; }
+    box.textContent = '';
+    if (!receipt || typeof receipt !== 'object' || !tx || typeof tx !== 'object') { box.appendChild(el('p', 'try-err', 'The public node did not answer. Try again in a moment.')); return; }
+    const list = el('ul', 'try-checks');
+    const hits = transfersOf(receipt).filter((t) => t.token === r.token.toLowerCase() && t.to === wantTo.toLowerCase());
+    const payerHit = hits.filter((t) => t.from === r.payer.toLowerCase());
+    let ok = checkLine(list, cid === node.chainId, 'The node is on ' + node.name, 'chain id ' + cid);
+    ok = checkLine(list, receipt.status === '0x1', 'The transaction succeeded', 'block ' + parseInt(receipt.blockNumber, 16)) && ok;
+    ok = checkLine(list, String(receipt.to).toLowerCase() === r.token.toLowerCase(), 'It calls the USDC contract HSP lists', r.token) && ok;
+    ok = checkLine(list, payerHit.length === 1, 'One USDC transfer from the payer to ' + wantTo,
+      payerHit.length === 1 ? usdc(payerHit[0].value.toString()).replace('USDC.e', 'USDC') + ' (' + payerHit[0].value + ' raw)' : hits.length + ' matching transfers') && ok;
+    ok = checkLine(list, String(tx.from).toLowerCase() === HSP_RELAYER, 'Sent by HSP\'s gateway, not by the payer', 'broadcast from ' + tx.from + '; the payer only signed') && ok;
+    const v = el('p', 'try-verdict ' + (ok ? 'is-accept' : 'is-reject'), ok ? 'ACCEPT' : 'REJECT');
+    box.appendChild(v);
+    box.appendChild(list);
+    const link = el('p', 'try-link');
+    const a = el('a', '', 'Open the transaction on the explorer');
+    if (/^https:\/\/(base-sepolia|eth-sepolia|arbitrum-sepolia)\.blockscout\.com\/tx\/0x[0-9a-fA-F]{64}$/.test(r.tx_url)) {
+      a.href = r.tx_url; a.target = '_blank'; a.rel = 'noopener'; link.appendChild(a); box.appendChild(link);
+    }
+  }
+  async function loadHsp() {
+    const pick = $('h-pick');
+    if (!pick) return;
+    let d = null;
+    try {
+      const r = await fetch('hsp_receipts.json', { credentials: 'omit', cache: 'no-store' });
+      if (r.ok) d = await r.json();
+    } catch (e) { d = null; }
+    hspRows = (d && Array.isArray(d.receipts) ? d.receipts : []).filter((r) => r && B32.test(r.tx) && ADDR.test(r.token) && ADDR.test(r.payer) &&
+      ADDR.test(r.pay_to) && Object.hasOwn(NODES, r.network)).reverse();
+    hspRows.forEach((r, i) => {
+      const o = el('option', '', r.time.slice(5, 16).replace('T', ' ') + ' UTC · ' + NODES[r.network].name + ' · ' + r.status.replace('payment-', '') + ' · ' + r.tx.slice(0, 10) + '…');
+      o.value = String(i);
+      pick.appendChild(o);
+    });
+    const sync = () => { const r = hspRows[Number(pick.value)]; if (r) $('h-to').value = r.pay_to; };
+    pick.addEventListener('change', sync);
+    sync();
+    $('h-form').addEventListener('submit', (e) => { e.preventDefault(); checkHsp($('h-to').value.trim()); });
+    $('h-lie').addEventListener('click', () => { $('h-to').value = WRONG_TO; checkHsp(WRONG_TO); });
+  }
+  loadHsp();
 })();

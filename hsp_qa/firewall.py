@@ -19,9 +19,9 @@ from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 
 import config
 
-ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-B32_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
-UINT_RE = re.compile(r"^[0-9]{1,78}$")
+ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}\Z")
+B32_RE = re.compile(r"^0x[0-9a-fA-F]{64}\Z")
+UINT_RE = re.compile(r"^[0-9]{1,78}\Z")
 
 DOMAIN_FIELD_TYPES = {"name": "string", "version": "string", "chainId": "uint256", "verifyingContract": "address"}
 EIP3009_TYPE = [("from", "address"), ("to", "address"), ("value", "uint256"), ("validAfter", "uint256"),
@@ -216,7 +216,8 @@ def check(prepared, exp, *, now=None, quote_expires_at=None):
 
     # --- validity window ---
     qexp = quote_expires_at if quote_expires_at is not None else _rfc3339(prepared.get("quote_expires_at"))
-    upper = (qexp + config.VALID_BEFORE_SLACK_S) if qexp else (now + config.FALLBACK_MAX_VALID_S)
+    # the limit comes from OUR clock: the gateway must not be able to move it by moving quote_expires_at
+    upper = (min(qexp, now) + config.VALID_BEFORE_SLACK_S) if qexp else (now + config.FALLBACK_MAX_VALID_S)
 
     def window(v, what):
         if v < now + config.MIN_TIME_TO_SUBMIT_S:

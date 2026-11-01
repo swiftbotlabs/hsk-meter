@@ -7,6 +7,10 @@ If the seller cannot deliver after it has been paid, the payment is refunded on-
 default x402 path the buyer needs no gas token. With an HSP-style mandate attached, the seller ships the data only after a verifier has
 checked the adapter-signed receipt against the buyer's signed mandate.
 
+**Real HSP payments:** 14 payments through HashKey's official HSP Agentic Payment server, 12 of them agent to
+agent, all with `attribution_verified: true`, on three testnets in HSP's QA environment.
+[Receipts below](#real-hsp-payments), [live table](https://swiftbotlab.github.io/hsk-meter/#hsp-h).
+
 By Swift Bot Labs, for the HashKey Chain Horizon Hackathon (India), track **Agent Payments & A2A Settlement**.
 
 **Watch the overview on YouTube (1:17):** [youtu.be/t2yyd76qRlc](https://youtu.be/t2yyd76qRlc): a paid call on
@@ -17,8 +21,8 @@ is under [At a glance](#at-a-glance).
 
 **No wallet? Use the [try page](https://swiftbotlab.github.io/hsk-meter/try.html):** check any payment receipt
 (ACCEPT or REJECT, with every check), then take a real price quote and send it back changed (one character, another
-payer, another address, or unpaid) and watch the endpoint refuse each one. Every button is one free GET; nothing is
-signed or paid.
+payer, another address, or unpaid) and watch the endpoint refuse each one. Its third section reads a real HSP payment
+from a public testnet node and checks it in your browser. Nothing on the page is signed or paid.
 
 **Always-on public endpoint: [hsk-meter.swiftbotlab.workers.dev](https://hsk-meter.swiftbotlab.workers.dev)**, on
 HashKey Chain mainnet. It holds no private key: you pay the settlement contract yourself, and the endpoint checks that
@@ -52,23 +56,23 @@ sentence lives in this repository, and how far it has been proven.
 
 | The listing says | HSK Meter component | Proven by |
 |---|---|---|
-| A2A scenario | `agent/agent_b.py` (Agent B) pays `server/seller.py` (Agent A) to make its own answer | live on mainnet: 3 runs and a composed refund, see [A2A](#agent-to-agent-a2a-a-seller-that-is-also-a-buyer) |
-| the receiving Agent transmits the payment conditions | `server/hsp_merchant_agent.py`: turns a priced request into a **Cart Mandate**, signs it (ES256K `merchant_authorization`), registers it at the HSP gateway (`POST /api/v1/merchant/orders`, HMAC) and answers `402` with it | offline tests against our mock gateway |
-| the Payment Agent constructs a Payment Mandate | `agent/hsp_payer.py`: checks the cart against a pinned merchant key, `cart_hash`, the documented cart rules, the resource, payee and AP2 spending limits, then builds the **Payment Mandate** in the wire format the hosted checkout uses | offline tests; field-by-field sources in [HSP_STATUS.md](HSP_STATUS.md#payer-wire-format-unverified-against-a-live-gateway) |
-| completes the wallet signature | EIP-3009 `TransferWithAuthorization` (EIP-712) over the token's domain as read on-chain, inside the mandate's x402 v2 `payment_payload` | offline tests, plus an independent Node.js check of the encoding |
-| verifies and executes through the existing Gateway of HSP | `server/hsp_gateway.py`: HashKey Merchant client (orders, payment queries, signed webhooks) and submission to `POST /api/v1/payment/pay-mandate` | built and tested against the mock; **not yet run against the live HSP gateway**: merchant credentials are requested and not issued |
-| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live: 63 transactions, 48 paid requests, 9 refunds (all endpoints, 2026-10-29); [live proof](#live-proof-on-mainnet), [public endpoint](#public-endpoint-keyless) and [dashboard](https://swiftbotlab.github.io/hsk-meter/) |
+| A2A scenario | [`hsp_qa/receiving_agent.py`](hsp_qa/receiving_agent.py) sells a HashKey Chain address profile, [`hsp_qa/payment_agent.py`](hsp_qa/payment_agent.py) buys it; two wallets, two processes, plain HTTP | live: 12 runs through HSP, [receipts](#real-hsp-payments). On mainnet, without HSP's gateway: `agent/agent_b.py` pays `server/seller.py`, 3 runs and a composed refund, see [A2A](#agent-to-agent-a2a-a-seller-that-is-also-a-buyer) |
+| the receiving Agent transmits the payment conditions | a `402` with amount, `pay_to`, `merchant_name`, resource, token and `payment_request_id`, signed by the key of the address that gets paid | live; refusals in `hsp_qa/test_a2a.py` |
+| the Payment Agent constructs a Payment Mandate | `payment_agent.py` checks the conditions against the seller it pinned, its spend limits and `get_chain_config`, builds the Cart Mandate with the seller's `payment_request_id`, and the official MCP (`create_order`, `prepare_payment`, `finalize_payment`) returns the Payment Mandate | live |
+| completes the wallet signature | EIP-3009 `TransferWithAuthorization` signed by the payer's own key, only after the [signing firewall](hsp_qa/firewall.py) has checked HSP's reply against our order | live; `python3 hsp_qa/firewall_demo.py` refuses tampered copies of a real HSP reply |
+| verifies and executes through the existing Gateway of HSP | `submit_payment`: HSP's Gateway broadcasts the transfer (the transaction comes from HSP's relayer; the payer needs no gas token). The seller then checks it twice: `query_payment` and the token `Transfer` on a pinned RPC | live: 14 transactions, [receipts](#real-hsp-payments) |
+| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live on mainnet as its own rail: 63 transactions, 48 paid requests, 9 refunds (all endpoints, 2026-10-29); [live proof](#live-proof-on-mainnet), [public endpoint](#public-endpoint-keyless), [dashboard](https://swiftbotlab.github.io/hsk-meter/). HSP's QA server offers testnets only, so the two rails are not joined: see [what is not claimed](#real-hsp-payments) |
 
 ## Self-check: six judging dimensions
 
 | Dimension | What there is to check | Evidence |
 |---|---|---|
-| Track fit | every phrase of the track text maps to a component (table above); HSP is used as documented on the merchant side and as the checkout uses it on the payer side | [HSP gateway](#hsp-gateway-cart-mandate-payment-mandate-gateway), [HSP_STATUS.md](HSP_STATUS.md) |
-| Completeness | verified contract on mainnet, an always-on public endpoint you can pay, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, the HSP gateway rail | [try it now](#try-it-now), [live proof](#live-proof-on-mainnet), [dashboard](https://swiftbotlab.github.io/hsk-meter/), [video](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4) |
+| Track fit | every phrase of the track text maps to a component and a live run (table above), through HashKey's official HSP server | [Real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
+| Completeness | verified contract on mainnet, an always-on public endpoint you can pay, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, a receiving agent and a payment agent running over HSP | [try it now](#try-it-now), [live proof](#live-proof-on-mainnet), [dashboard](https://swiftbotlab.github.io/hsk-meter/), [video](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4) |
 | Team | Swift Bot Labs; how we work | [Team](#team) |
 | Solution value | an API can charge 0.025-0.08 USDC.e per call, settled on-chain per request, and the payment comes back automatically when delivery fails; the buyer needs no gas token | [How a request is paid](#how-a-request-is-paid) |
-| Authenticity | every number links to a transaction; what is not done is written down (no live HSP gateway run yet) | [live proof](#live-proof-on-mainnet), [what waits on HashKey](HSP_STATUS.md#what-waits-on-hashkey) |
-| Code quality | CI on every push runs 359 tests: 216 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
+| Authenticity | every number links to a transaction; what is not done is written down (HSP's gateway ran on testnets, not mainnet) | [live proof](#live-proof-on-mainnet), [real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
+| Code quality | CI on every push runs 469 tests: 326 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
 
 ## Why it is worth backing
 
@@ -78,7 +82,7 @@ sentence lives in this repository, and how far it has been proven.
 | Who sells | any API or data provider: it registers an endpoint and its price on-chain and receives USDC.e for every call it answers |
 | Does it pay for itself | prices of 0.025-0.08 USDC.e per call against a worst measured settlement gas of about $0.011 (246,503 gas at 500 gwei), paid by the seller, so any price from 0.02 USDC.e clears gas with margin. The buyer pays no gas on the default x402 path |
 | Why buyers can trust it | the payment comes back on-chain automatically when the seller cannot deliver; a stale or changed quote is refused, never charged differently; the buyer's spend caps are checked before anything is signed |
-| Why HashKey Chain | every paid call is a USDC.e transfer on HashKey Chain with a public receipt, and HSP adds the merchant layer (orders, Cart and Payment Mandates) on top of the same per-request settlement |
+| Why HashKey Chain | every paid call is a USDC.e transfer on HashKey Chain with a public receipt, and HSP adds the merchant layer (orders, Cart and Payment Mandates, a Gateway that broadcasts for the payer), which we have now run for real on HSP's QA server |
 
 ## At a glance
 
@@ -101,7 +105,7 @@ the KYC SBT compliant mode.
 | Payment protocol | x402 v2 (`402 Payment Required`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`), network `eip155:177` |
 | Seller | provider [`0x30CCc6d816854d1a66fBfecE15b1515a3E941160`](https://hsk.blockscout.com/address/0x30CCc6d816854d1a66fBfecE15b1515a3E941160), endpoints `1` and `2` |
 | HashKey ecosystem | APRO price feeds (USD value of quotes and totals, gas guard) and an optional KYC SBT compliant mode, see [HashKey ecosystem](#hashkey-ecosystem) |
-| HSP gateway | a HashKey Merchant (HSP) rail for the same requests: Cart Mandate, Payment Mandate, HSP Gateway; built from the official API docs, tested against a mock gateway, switches on with merchant credentials; plus a payer for HashKey's official HSP Agentic Payment QA server with a signing firewall ([hsp_qa/](hsp_qa/README.md), QA access requested 2026-10-30), see [HSP gateway](#hsp-gateway-cart-mandate-payment-mandate-gateway) |
+| HSP | 14 real payments through HashKey's official HSP Agentic Payment server (QA environment, testnets), 12 agent to agent: [receipts](#real-hsp-payments), code in [hsp_qa/](hsp_qa/README.md). An earlier rail on the HashKey Merchant REST API is built and tested against a mock, see [HSP gateway](#hsp-gateway-cart-mandate-payment-mandate-gateway) |
 
 ## Live proof on mainnet
 
@@ -501,22 +505,93 @@ Full details and the threat model are in [SECURITY.md](SECURITY.md). In short:
 - **Ecosystem reads:** price feeds and the KYC SBT are read-only; a wrong feed can only tighten the gas guard, and an
   unreadable SBT fails closed.
 
+## Real HSP payments
+
+HashKey opened the official **HSP Agentic Payment** server to hackathon teams on 2026-10-30
+(`https://mcp-qa.hashkeymerchant.com/`, MCP, allowlisted by IP). Our IP was allowlisted, and every payment below ran
+through it under the team name `Swift Bot Labs (HSK Meter)`. Each line was re-checked with HSP and on-chain when the
+file was written. Full list with flow ids: [docs/hsp_receipts.json](docs/hsp_receipts.json),
+[live table](https://swiftbotlab.github.io/hsk-meter/#hsp-h).
+
+| Time (UTC) | Network | flow_id | payment_request_id | Status | attribution_verified | Transaction |
+|---|---|---|---|---|---|---|
+| 2026-11-01 11:10 | Base Sepolia | `2d693179-d696-41db-a25d-90291fdfabb0` | `HSKM-PR-20261101110957-662fb9` | payment-safe | true | [`0x9c11f686…`](https://base-sepolia.blockscout.com/tx/0x9c11f686ddf2439793c5be56614d6a284e0fb54e37dae44d218c8689b5e544c3) |
+| 2026-11-01 11:40 | Base Sepolia, agent to agent | `e4ff8742-2994-4064-b635-2c5db224d49f` | `HSKM-PR-20261101114039-1c729c6f9302a76a` | payment-safe | true | [`0x580b1f3b…`](https://base-sepolia.blockscout.com/tx/0x580b1f3bc08efeb5b71a32639cc73a1de095fd9ffe907c139f4399bf3ae37af3) |
+| 2026-11-01 11:43 | Ethereum Sepolia, agent to agent | `b7944e0f-4bef-4036-b983-12cb1066d29b` | `HSKM-PR-20261101114352-aabbd8c7be3e0c52` | payment-safe | true | [`0xd3302360…`](https://eth-sepolia.blockscout.com/tx/0xd3302360293bfa37fac69197dccef08084c72ab3eb29db9123f7c80919d4516d) |
+| 2026-11-01 11:48 | Arbitrum Sepolia, agent to agent | `c599692f-3a9a-495d-88a9-8a37c780bc34` | `HSKM-PR-20261101114802-a2fe06edd71c183d` | payment-safe | true | [`0x8c03d2f6…`](https://arbitrum-sepolia.blockscout.com/tx/0x8c03d2f6d4b53a053a0aadf22bdcd079084c025a735a363b9bdd1d1b487fc854) |
+| 2026-11-01 11:50 | Base Sepolia, agent to agent | `d8b6972e-96a5-4933-b96c-b40a6546b35f` | `HSKM-PR-20261101115008-b1eb29319c8e199c` | payment-safe | true | [`0xa0d38f17…`](https://base-sepolia.blockscout.com/tx/0xa0d38f171d62e781e80faf417021a90eb9415f670a01297292424e2710798413) |
+| 2026-11-01 11:54 | Arbitrum Sepolia, agent to agent | `8d7a0ce3-0bf5-45ad-8067-6f4c79e3a694` | `HSKM-PR-20261101115406-46585da05d3c086c` | payment-safe | true | [`0xb1b4cb27…`](https://arbitrum-sepolia.blockscout.com/tx/0xb1b4cb27a9e23174a52ab7c70e9231fd130a914100656de86db7d8e58ced3012) |
+| 2026-11-01 11:56 | Base Sepolia, agent to agent | `3b278679-535d-4d0a-9dde-9ab934d56181` | `HSKM-PR-20261101115559-9baba733b38f267b` | payment-safe | true | [`0x8df5092f…`](https://base-sepolia.blockscout.com/tx/0x8df5092f4c415b4f23f22b6cef520ae83e3748c0234bf9a0ad2deb1e4fbcc494) |
+| 2026-11-01 11:59 | Ethereum Sepolia, agent to agent | `e8511349-736a-4aac-b96d-b32cb6ccfa2d` | `HSKM-PR-20261101115941-9c65b0cb49b39df2` | payment-safe | true | [`0x569945f1…`](https://eth-sepolia.blockscout.com/tx/0x569945f1e3a431629b4e4b45881e141892a1ce8fd27723cb12b873046b483ba9) |
+| 2026-11-01 12:04 | Arbitrum Sepolia, agent to agent | `6abe3afd-d4cd-42ad-98e2-c6c9c91934b9` | `HSKM-PR-20261101120403-77c845bee3680b9d` | payment-safe | true | [`0xb642d3c3…`](https://arbitrum-sepolia.blockscout.com/tx/0xb642d3c36107d1aec732ae421638b70d2985e71fd7106d9dddff5b6520991d80) |
+| 2026-11-01 12:06 | Base Sepolia, agent to agent | `a225829e-47e1-40f0-92ec-f32ec5a1b208` | `HSKM-PR-20261101120601-13e5aefc65beebc1` | payment-safe | true | [`0xb334bc86…`](https://base-sepolia.blockscout.com/tx/0xb334bc867f0c5f2db4d0589a7a153cecbfd4e3828ab010cc1f594e10f9d155fe) |
+| 2026-11-01 12:09 | Ethereum Sepolia, agent to agent | `bb84bacb-363f-4c08-aa78-c83d4a3b74e0` | `HSKM-PR-20261101120942-11038a6d49cf01ad` | payment-safe | true | [`0x5cc4e03d…`](https://eth-sepolia.blockscout.com/tx/0x5cc4e03d6b4b7dcc535cec655bd9e809ce9387644f7f3703ef433455d597506e) |
+| 2026-11-01 12:14 | Arbitrum Sepolia | `7697802b-4a07-4238-95a4-848e3d5ed3fa` | `HSKM-PR-20261101121408-1aa0a6` | payment-safe | true | [`0x7c68ae62…`](https://arbitrum-sepolia.blockscout.com/tx/0x7c68ae621106f45ec0273081a45dc588b1ffadba6f8d67bf162f6ee2d438fc07) |
+| 2026-11-01 12:14 | Base Sepolia, agent to agent | `e67df292-6b66-4240-aaad-a8dee7324df1` | `HSKM-PR-20261101121450-866813f5984ccaef` | payment-safe | true | [`0xefbb124f…`](https://base-sepolia.blockscout.com/tx/0xefbb124f9bfd8e7a34191e8e948602e5b2947a19b7fbf2f72675c7cc6598d7af) |
+| 2026-11-01 12:25 | Arbitrum Sepolia, agent to agent | `fc4daee6-79ab-4a33-9e61-cb9717e9e751` | `HSKM-PR-20261101122526-729979a904f6264f` | payment-safe | true | [`0x03547b71…`](https://arbitrum-sepolia.blockscout.com/tx/0x03547b7196000d775474aa739cd5ff0f71a13e227546f5a3e5345336ee551d69) |
+
+Status and attribution come from HSP's `query_payment`, and every transaction was read back from the chain when this
+table was written. `payment-safe` means on-chain with half of the required confirmations, not `payment-finalized`. About
+15 minutes after a payment, HSP's query starts answering `payment timeout` (error 10003), which the guide describes as a
+recoverable state with delayed reconciliation, so the status above is the last one HSP gave. None of these payments has
+reported `payment-finalized` so far.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Payment Agent (hsp_qa/payment_agent.py)
+    participant R as Receiving Agent (hsp_qa/receiving_agent.py)
+    participant M as HSP server (official MCP)
+    participant G as HSP Gateway
+    participant C as Testnet chain
+    P->>R: GET /v1/address-profile?address=... with X-Payer
+    R-->>P: 402 + payment conditions, signed by the pay_to key
+    Note over P: pinned seller, spend limits, get_chain_config: refuses before any order
+    P->>M: create_order (Cart Mandate from the conditions, seller's payment_request_id)
+    P->>M: get_order, prepare_payment
+    M-->>P: EIP-712 data, payment_payload, mandate contents
+    Note over P: signing firewall: recipient, value, chain, token, window, mandate copy. Refuses before signing
+    P->>P: wallet signs EIP-3009
+    P->>M: finalize_payment, submit_payment
+    M->>G: Payment Mandate
+    G->>C: broadcasts the transfer
+    P->>M: query_payment every 15 s until payment-safe
+    P->>R: same GET with X-HSP-Payment-Request-Id and X-HSP-Proof (wallet signature)
+    R->>M: query_payment for OUR id: status, attribution, merchant, recipient, token, chain, amount, payer
+    R->>C: pinned RPC: status 1, one matching Transfer, value in band, confirmations
+    R-->>P: 200 with the data, once. The same claim again: 409 already_served
+```
+
+Reproduce it:
+
+```sh
+python3 hsp_qa/test_a2a.py        # offline: the whole flow plus every refusal, against a local mock of the MCP server
+python3 hsp_qa/firewall_demo.py   # offline: a real prepare_payment reply from HSP, then tampered copies of it, refused
+
+# live, from an allowlisted IP, with a funded testnet payer (see hsp_qa/README.md)
+python3 hsp_qa/receiving_agent.py --port 8411
+python3 hsp_qa/payment_agent.py --seller <pay_to> --address 0x78C8476772BC209C3df09Da5e129d0879cd57F8c --replay-check
+```
+
+| Claim | Tag | Check it |
+|---|---|---|
+| 14 payments on HSP's QA server, attributed to our team name | VERIFIED | the transactions in the table; organizers can aggregate them by `merchant_name` |
+| The Payment Agent signs only what its firewall checked, and HSP's Gateway broadcasts it | VERIFIED on the live runs | each transaction's sender is HSP's relayer, the token `Transfer` goes from the payer to `pay_to` |
+| The seller serves only after HSP and the chain agree, and only once | VERIFIED on the live runs (each ends in `409 already_served`), REPRODUCIBLE offline | `python3 hsp_qa/test_a2a.py` |
+| The firewall refuses tampered copies of a real HSP reply before signing | REPRODUCIBLE | `python3 hsp_qa/firewall_demo.py` |
+| The Merchant REST rail below (`server/hsp_gateway.py`) | MODELED | tested against our mock gateway only |
+| HSP payments on HashKey Chain testnet (133) | NOT-CLAIMED | HSP lists the chain, but its test USDC and USDT are minted by their owner and we found no public way to get them |
+| HSP Gateway settlement on HashKey Chain mainnet | NOT-CLAIMED | HSP's QA server lists testnets only. Mainnet traffic runs on our own contract, separately |
+
 ## HSP gateway: Cart Mandate, Payment Mandate, Gateway
 
-Track 2's flow, as the organizer describes it: the Payment Agent builds a Payment Mandate from the payment
-conditions the receiving agent sends, completes the wallet signature, and the payment is verified and executed
-on-chain by HSP's existing gateway. HSK Meter implements this against the
-[HashKey Merchant API](https://hashkey-merchant.github.io/en/index.html), using the AP2 terms that API uses. The
-merchant side follows the official docs. The docs do not publish the payer side, so the Payment Mandate follows the
-wire format of the gateway's hosted checkout, as found in its client code in public prior art (sources and one open
-conflict in [HSP_STATUS.md](HSP_STATUS.md#payer-wire-format-unverified-against-a-live-gateway)). Everything here runs
-against our mock gateway; **none of it has run against the live HSP gateway yet**, because merchant credentials are
-requested and not issued.
-
-On 2026-10-30 HashKey opened the official **HSP Agentic Payment** QA server (MCP) for hackathon teams. Our payer for it
-is in [hsp_qa/](hsp_qa/README.md): the documented order, prepare, sign, finalize, submit and query flow under one team
-name, with a signing firewall that checks the server's EIP-712 data against our own order before anything is signed
-(84 offline tests, in CI). Access is allowlisted by IP: we requested it on 2026-10-30, and no live QA payment has run yet.
+An earlier rail, built before the official server existed, on the
+[HashKey Merchant REST API](https://hashkey-merchant.github.io/en/index.html), using the AP2 terms that API uses. The
+merchant side follows the official docs; the payer side follows the wire format of the gateway's hosted checkout, as
+found in its client code in public prior art (sources in
+[HSP_STATUS.md](HSP_STATUS.md#payer-wire-format-unverified-against-a-live-gateway)). It runs against our mock gateway
+only, because merchant credentials for that API were not issued. Payments through HSP run on the
+[official server above](#real-hsp-payments).
 
 ```mermaid
 sequenceDiagram
@@ -548,16 +623,15 @@ sequenceDiagram
 | the buyer's spend guard | AP2 constraints: `payment.allowed_payees`, `payment.amount_range`, `payment.budget`, `payment.agent_recurrence`, reserved in a ledger before anything is signed |
 | proof of payment before delivery | the gateway's payment record (status at least `payment-included`, tx hash, cart id, token, payee, amount, payer), its signed webhook, and optionally the token `Transfer` on-chain; the data goes only to the wallet that paid (`X-HSP-Proof`, an EIP-191 signature) |
 
-What is live and what waits on HashKey:
+State of this rail:
 
 | Part | State |
 |---|---|
 | Merchant API: one-time and reusable orders, payment queries, HMAC request signing, ES256K JWT, webhooks with idempotency | built from the docs and checked against the official SDKs; tested against a local mock gateway that implements the documented shapes, error codes and signature checks; openssl independently verifies our HMAC and ES256K output |
 | Receiving agent and payment agent | run end to end against the mock: `python3 server/hsp_mockgw.py demo`; a retry after a lost answer pays once |
 | Credentials | requested from HashKey operations; HSP mode stays off until `secrets/hsp/hsp.env` has `APP_KEY`, `APP_SECRET`, `BASE_URL` |
-| QA gateway | our network currently gets a Cloudflare block page from `merchant-qa.hashkeymerchant.com`; access requested |
-| HSP Agentic Payment QA (official MCP, 2026-10-30) | payer and signing firewall in [hsp_qa/](hsp_qa/README.md), 84 offline tests in CI; IP allowlist requested 2026-10-30; no live payment yet |
-| Payment Mandate submission | built in the hosted checkout's wire format (the docs name the route in their architecture diagram only) and submitted to `POST /api/v1/payment/pay-mandate`; the mock gateway checks every field and refuses 15 tampered variants; tests recompute the encoding independently (stdlib, openssl, Node.js). **Unverified against a live gateway.** Open questions: [HSP_STATUS.md](HSP_STATUS.md) |
+| HSP Agentic Payment QA (official MCP) | live: see [Real HSP payments](#real-hsp-payments) |
+| Payment Mandate submission | built in the hosted checkout's wire format (the docs name the route in their architecture diagram only) and submitted to `POST /api/v1/payment/pay-mandate`; the mock gateway checks every field and refuses 15 tampered variants; tests recompute the encoding independently (stdlib, openssl, Node.js). **Not verified against the merchant API's live gateway.** Open questions: [HSP_STATUS.md](HSP_STATUS.md) |
 
 ## HSP draft adapter on the settlement contract
 
@@ -601,6 +675,7 @@ Implemented today (`server/hsp_draft.py`, labeled `hsp-draft/swiftbotlab-0`):
 | `server/hsp_gateway.py` | HashKey Merchant (HSP) client: canonical JSON, HMAC signing, ES256K JWT, Cart Mandate builder and validator, orders, payment queries, webhooks; `status` / `create-order` / `query` / `checkout` CLI |
 | `server/hsp_merchant_agent.py`, `agent/hsp_payer.py` | the receiving agent and the payment agent of the HSP gateway flow |
 | `server/hsp_mockgw.py`, `server/test_hsp_gateway.py` | local mock gateway (documented shapes and checks) and its tests; `hsp_mockgw.py demo` runs the flow offline |
+| `hsp_qa/` | the official HSP Agentic Payment flow: `receiving_agent.py`, `payment_agent.py`, `firewall.py` (signing firewall), `flow.py`, `mcp_client.py`, `mock_server.py`, `publish_receipts.py`, `firewall_demo.py`, tests; `fixtures/` holds real replies from HSP's QA server |
 | `deploy/` | `run_sandboxed.sh` (bubblewrap sandbox for the seller), `hsk-meter-seller.service` (systemd user unit template) and `sandbox_probe.py` (what the sandbox can reach) |
 | `ops/state/` | the mainnet deployment record and the public addresses of the demo roles |
 | `worker/` | the always-on public endpoint (Cloudflare Worker, keyless): `src/core.js` (protocol, payment verification, receipt verifier), `src/ledger.js` (served-set, one Durable Object per request id), `test/` (offline tests, shared vectors with `server/protocol.py`, end-to-end test with the unchanged buyer) |
@@ -622,6 +697,8 @@ python3 agent/test_buyer.py           # the buyer's spend guard
 python3 agent/test_mcp.py             # MCP server end to end against the real seller on an offline chain model (56 tests)
 python3 server/test_ecosystem.py      # APRO feeds (quote USD, gas guard, buyer USD view) and KYC SBT mode (29 offline tests)
 python3 server/test_hsp_gateway.py    # HSP gateway rail against the mock gateway: HMAC, ES256K, carts, webhooks, A2A flow, payer wire format (43 tests)
+python3 hsp_qa/test_hsp_qa.py         # official HSP flow: MCP client, signing firewall on mock and real replies, order checks (107 tests)
+python3 hsp_qa/test_a2a.py            # A2A over HSP: both agents over HTTP, replay, mismatch and policy refusals (87 tests)
 node tools/test_dashboard.js          # dashboard decoder and USD value: only endpoints 1 and 2 of our provider count, hostile logs dropped (35 tests)
 (cd worker && npm ci --omit=dev --ignore-scripts) && node worker/test/run.mjs   # public endpoint: replay, races, wrong amount/endpoint/payer, refund listing, receipts (53 tests)
 python3 worker/test/test_buyer_compat.py   # the unchanged buyer pays the public endpoint's code end to end on the offline chain model (6 tests)
@@ -636,8 +713,8 @@ HSK Meter is built and maintained by **Swift Bot Labs**, a small maker team that
 on-chain services ([github.com/swiftbotlab](https://github.com/swiftbotlab)). How we work on this project:
 
 - Ship on mainnet, then prove it: every claim in this README links to a transaction or a test.
-- Write down what is not done. The HSP gateway rail waits on merchant credentials, and we say so instead of
-  demoing a mock as the real thing.
+- Write down what is not done. HSP's gateway ran on its QA testnets, not on mainnet, and we say so instead of blurring
+  the two rails.
 - Every change runs the full test suite in CI before it counts, and code that handles keys or money gets a security
   review before it is published.
 

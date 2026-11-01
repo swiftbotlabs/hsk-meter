@@ -479,6 +479,47 @@ class TestLiveFixtures(unittest.TestCase):
         self.assertEqual(cm.exception.rule, "expiry")
 
 
+    def test_the_gateway_cannot_stretch_the_validity_window(self):
+        far = str(2 ** 31 * 2)                                # moved together, as a lying gateway would
+        p = copy.deepcopy(self.prep)
+        p["eip712"]["message"]["validBefore"] = far
+        p["payment_payload"]["payload"]["authorization"]["validBefore"] = far
+        p["quote_expires_at"] = "2096-01-01T00:00:00Z"
+        with self.assertRaises(firewall.Refused) as cm:
+            self.check(p)
+        self.assertEqual(cm.exception.rule, "expiry")
+
+    def test_a_trailing_newline_is_not_a_value(self):
+        self.refuse(lambda p: p["eip712"]["message"].update(value="10002\n"), "malformed")
+        self.refuse(lambda p: p["eip712"]["message"].update(to=p["pay_to"] + "\n"), "malformed")
+
+
+class TestOddServerValues(unittest.TestCase):
+    """Strange values fail closed and inside the flow's own error handling, so the receipts log stays complete."""
+
+    def test_gas_advanced(self):
+        for rows in (5, "x", [[]], [{"network": "n", "gas_fee_advanced": []}], [{"network": "n", "gas_fee_advanced": 1}],
+                     [{"network": "n", "gas_fee_advanced": True}, {"network": "n", "gas_fee_advanced": False}]):
+            self.assertIsNone(flow.gas_advanced({"gas_fee_configs": rows}, "n"), rows)
+        self.assertIs(flow.gas_advanced({"gas_fee_configs": [{"network": "n", "gas_fee_advanced": False}]}, "n"), False)
+
+    def test_numbers(self):
+        self.assertIsNone(flow._chain_int("\u00b2"))
+        self.assertIsNone(flow._rfc("\u00b2"))
+        self.assertIsNone(flow._rfc(float("inf")))
+        self.assertEqual(flow._chain_int("eip155:133"), 133)
+
+    def test_broken_chunked_reply_is_an_mcp_error(self):
+        import http.client
+
+        class Resp:
+            def read1(self, n):
+                raise http.client.IncompleteRead(b"")
+        r = mcp_client._Reader(type("C", (), {"sock": None})(), Resp(), time.monotonic() + 5, 100)
+        with self.assertRaises(mcp_client.McpError):
+            r.chunk()
+
+
 class TestOrderCheck(unittest.TestCase):
     """check_order reads the real get_order shape; a nested pay_to used to slip past a depth-first key search."""
 
@@ -909,7 +950,7 @@ class TestFlow(unittest.TestCase):
         e = self.env()
         with self.assertRaises(flow.FlowStop):
             self.pay(e, amount="1.01")
-        e.receipts.log("submit_payment", amount_usd="4.995")
+        e.receipts.log("signed", amount_usd="4.995")
         with self.assertRaises(flow.FlowStop) as cm:
             self.pay(e, amount="0.01")
         self.assertIn("lifetime", cm.exception.info["detail"])

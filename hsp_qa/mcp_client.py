@@ -106,6 +106,8 @@ class _Reader:
             self.conn.sock.settimeout(max(0.05, min(remaining, config.HTTP_TIMEOUT_S)))
         try:
             data = self.resp.read1(16384)
+        except http.client.HTTPException as e:   # a broken chunked reply: an error, not a crash that skips the receipts
+            raise McpError(f"read failed: {type(e).__name__}") from None
         except (TimeoutError, OSError) as e:  # socket.timeout is TimeoutError
             if isinstance(e, TimeoutError) or "timed out" in str(e):
                 raise McpTimeout("read timed out") from None

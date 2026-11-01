@@ -209,6 +209,50 @@ off the network targets become reachable.
   token, chain and validity. The payment agent never treats an HS256 JWT it receives as proof of anything.
 - The mock gateway (`server/hsp_mockgw.py`) is for tests only: loopback, in memory, no chain, no funds.
 
+## HSP Agentic Payment and A2A (`hsp_qa/`)
+
+- Every reply from the MCP server, the seller and an RPC is untrusted data: parsed and checked, never executed, never
+  treated as instructions. Tool descriptions on the server are written for assistants; our client is plain code and
+  does not act on them.
+- MCP client: host pinned to `mcp-qa.hashkeymerchant.com` over HTTPS (loopback only for the mock), no redirects, no
+  proxies, 20 s per read, 60 s per request (90 s for submit), 2 MB body cap.
+- Testnets only. The firewall refuses any chain outside a testnet allowlist; the QA keys are generated locally, mode
+  `0600`, never printed or passed as arguments, and are not used on mainnet. Signatures and mandates are logged only as
+  hashes. Spend caps: 1 USD per payment, 5 USD in total, counted from the receipts log per signature, not per submission:
+  a signature is a bearer authorization, and a quote error makes the flow sign again.
+- Signing firewall (`firewall.py`): HSP's server holds the merchant keys and returns the data to sign, so the payer
+  rebuilds every expectation from its own state and refuses on any mismatch: primary type and struct fields, chain id
+  (hex or decimal), token contract and EIP-712 domain, payer, recipient, amount (`token_total_raw`, the order amount +
+  2 %, a fee allowance only when the order says the payer bears gas, the per-payment cap), validity window (the limit
+  comes from our clock, not from the server's `quote_expires_at`), the x402 payload, the base64 copy of it inside the
+  Payment Mandate, and the mandate's USD total. It signs the normalised copy it checked. The firewall's guards are
+  mutation-checked. Permit2 spenders come from `get_chain_config`, so that one check trusts the server's config; the A2A
+  flow uses EIP-3009 only.
+- `get_order` must describe exactly the order we created, field by field, or nothing is prepared. A `get_chain_config`
+  that has content but parses to no token is an error, not "no token".
+- Never resubmit on uncertainty: an unanswered submission is queried; a quote error gets a new quote and a new signature.
+- Payment Agent: nothing reaches `create_order` unless the conditions are signed by the seller the operator pinned,
+  `pay_to` is that seller, and merchant, resource, payer, gateway, price limit, session cap, network, token, chain and
+  expiry all pass. Conditions with extra fields are refused. For a purchase the firewall takes the price limit as its cap
+  and allows no fee on top. The seller's text is capped and escaped before it reaches any output.
+- Receiving Agent: loopback by default. It takes no transaction hash from the caller. A claim names only the
+  `payment_request_id` this agent issued (64 random bits plus a timestamp) and carries an EIP-191 proof from the wallet
+  the quote was issued to. Data is served only if HSP's `query_payment` shows `payment-safe` or `payment-finalized`,
+  `attribution_verified` true, and our merchant, recipient, token, chain, payer and USD amount, **and** a pinned RPC
+  shows status 1 with exactly one matching token `Transfer`, the value inside the price band and equal to HSP's amount,
+  and at least 2 confirmations. A failed check leaves the quote open and serves nothing.
+- Exactly once: quotes live in a mode `0600` SQLite file, so a restart does not reopen them. The move to `serving` is one
+  atomic update, after verification, and only that claim can finish or release it; `tx` is stored in one spelling and is
+  UNIQUE, so one transaction cannot pay for two quotes. If the data source fails or the answer cannot be written, the
+  claim reopens and the same payment can be claimed again. Delivery is at most once: an answer that left this agent and
+  was lost on the way is not sent a second time. The pay_to key signs the conditions; it is testnet-only.
+- Limits: 30 quotes and 20 claims per minute per client, 2000 live quotes, a 300-byte request line, a 15 s socket
+  timeout, and one gateway question per unpaid quote per 15 s, so a stranger cannot drive traffic to HSP from our
+  allowlisted IP. It is a threaded `http.server` with no connection cap: keep it on loopback or behind a proxy that
+  limits connections.
+- `attribution_verified` is also true on an unpaid order, so neither agent treats it as proof of payment on its own.
+- The mock server (`hsp_qa/mock_server.py`) is for tests only: loopback, in memory, no chain, no funds.
+
 ## Public endpoint (`worker/`, Cloudflare Worker, keyless)
 
 The always-on endpoint `https://hsk-meter.swiftbotlab.workers.dev` sells the same two requests as the seller, over the

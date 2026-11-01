@@ -8,6 +8,7 @@ submission is queried, never blindly resubmitted. Every step is appended to a re
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -204,7 +205,7 @@ def _chain_int(v):
         return v
     if isinstance(v, str):
         s = v.split(":", 1)[1] if v.startswith("eip155:") else v
-        if s.isdigit():
+        if s.isascii() and s.isdigit():
             return int(s)
         if re.match(r"^0x[0-9a-fA-F]+$", s):
             return int(s, 16)
@@ -388,11 +389,13 @@ class Receipts:
         except FileNotFoundError:
             return []
 
-    def committed_usd(self):
-        """USD of payments that reached submit (or an uncertain submit) in this receipts file."""
+    def committed_usd(self, payment_request_id=None):
+        """USD of every signature in this receipts file. A signature counts when it is made, not when it is submitted:
+        each one is a bearer authorization, and a quote error makes the flow sign again."""
         tot = Decimal(0)
         for r in self.rows():
-            if r.get("step") in ("submit_payment", "submit_uncertain", "submit_error") and r.get("mode") == self.mode:
+            if r.get("step") == "signed" and r.get("mode") == self.mode and \
+                    payment_request_id in (None, r.get("payment_request_id")):
                 try:
                     tot += Decimal(str(r.get("amount_usd", "0")))
                 except Exception:
@@ -502,16 +505,17 @@ def check_order(got, token, pay_to, amount_usd, pr_id):
 
 def gas_advanced(got, network):
     """get_order lists gas treatment per network; absent or ambiguous = None (the firewall then allows a fee)."""
-    found = {c.get("gas_fee_advanced") for c in (got.get("gas_fee_configs") or [])
-             if isinstance(c, dict) and c.get("network") == network}
-    return found.pop() if len(found) == 1 and isinstance(next(iter(found)), bool) else None
+    rows = got.get("gas_fee_configs")
+    found = [c.get("gas_fee_advanced") for c in (rows if isinstance(rows, list) else [])
+             if isinstance(c, dict) and c.get("network") == network]
+    return found[0] if found and isinstance(found[0], bool) and all(v is found[0] for v in found) else None
 
 
 def _rfc(s):
     """RFC3339 string -> epoch seconds; also accepts epoch seconds / milliseconds (int or digit string)."""
-    if isinstance(s, bool):
+    if isinstance(s, bool) or (isinstance(s, float) and not math.isfinite(s)):
         return None
-    if isinstance(s, (int, float)) or (isinstance(s, str) and s.isdigit() and len(s) <= 16):
+    if isinstance(s, (int, float)) or (isinstance(s, str) and s.isascii() and s.isdigit() and len(s) <= 16):
         n = int(s)
         return n // 1000 if n > 10 ** 12 else n
     if not isinstance(s, str) or len(s) > 40 or not re.match(r"^\d{4}-\d{2}-\d{2}T", s):
@@ -540,8 +544,10 @@ def sign_typed(account, typed):
     return sig_hex
 
 
-def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False, label=None, pr_id=None, expiry=None):
-    """One payment. label / pr_id / expiry let a caller build the cart from a receiving agent's conditions."""
+def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False, label=None, pr_id=None, expiry=None,
+                cap_usd=None, fee_allowance_usd=None):
+    """One payment. label / pr_id / expiry let a caller build the cart from a receiving agent's conditions; cap_usd and
+    fee_allowance_usd tighten what the firewall will sign for this order."""
     amount_usd = Decimal(str(amount_usd))
     if not (config.MIN_PAYMENT_USD <= amount_usd <= config.PER_PAYMENT_CAP_USD):
         raise FlowStop("cap", detail=f"amount {amount_usd} outside [{config.MIN_PAYMENT_USD}, "
@@ -595,7 +601,10 @@ def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False, labe
             continue
         exp = firewall.Expectation(payer=payer, pay_to=ctx.pay_to, token=token, order_usd=amount_usd,
                                    gas_fee_advanced=gfa, payment_request_id=pr_id,
-                                   extra_permit2_spenders=ctx.extra_permit2_spenders)
+                                   extra_permit2_spenders=ctx.extra_permit2_spenders,
+                                   per_payment_cap_usd=config.PER_PAYMENT_CAP_USD if cap_usd is None else cap_usd,
+                                   fee_allowance_usd=config.FEE_ALLOWANCE_USD if fee_allowance_usd is None
+                                   else fee_allowance_usd)
         try:
             verdict = firewall.check(prep, exp, now=ctx.clock(), quote_expires_at=qexp)
         except firewall.Refused as e:
@@ -659,7 +668,7 @@ def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False, labe
             raise
         except McpTimeout as e:
             R.log("finalize_timeout", **base, **ids, error=str(e), attempt=attempt)
-            continue                     # nothing was submitted; a fresh quote is safe
+            continue                     # nothing was submitted; the signature made above already counts against the caps
         pmj = container_with(fin, "payment_mandate_json").get("payment_mandate_json")
         if not pmj:
             R.log("finalize_bad", **base, **ids, keys=sorted(fin)[:20])

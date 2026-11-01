@@ -47,3 +47,4 @@
 .try-explain { margin: 0; color: var(--ink-2); font-size: 14px; max-width: 75ch; }
 .try-wait { margin: 0; color: var(--ink-3); }
 .try-err { margin: 0; color: var(--reject); }
+select.try-input { appearance: auto; font-family: inherit; }

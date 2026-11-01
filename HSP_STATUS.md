@@ -1,11 +1,41 @@
-# HSP gateway integration: status and open questions
+# HSP integration: status and open questions
 
-Status as of 2026-10-29. HSK Meter's HashKey Merchant (HSP) gateway rail is built from the official API documentation
+Status as of 2026-11-01. HSK Meter has **two** HSP integrations.
+
+**1. HSP Agentic Payment, HashKey's official server: live.** Our IP is allowlisted on
+`https://mcp-qa.hashkeymerchant.com/` and real payments run through it on testnets, under the team name
+`Swift Bot Labs (HSK Meter)`, with `attribution_verified: true`. Code in [hsp_qa/](hsp_qa/README.md), receipts in
+[docs/hsp_receipts.json](docs/hsp_receipts.json) and in the [README](README.md#real-hsp-payments).
+
+| Network in HSP's QA config | Token | State |
+|---|---|---|
+| Base Sepolia (84532) | USDC `0x036CbD53...` | paid live, Circle's public faucet |
+| Ethereum Sepolia (11155111) | USDC `0x1c7D4B19...` | paid live, Circle's public faucet |
+| Arbitrum Sepolia (421614) | USDC `0x75faf114...` | paid live, Circle's public faucet |
+| HashKey Chain testnet (133) | USDC `0x8FE3cB71...`, USDT `0x37232544...` | **not paid**: both are minted by their owner (`isMinter(L2StandardBridge)` is false, USDT's `issue()` is owner-only) and neither HashKey's faucet (HSK only) nor its Sepolia bridge delivers these contracts |
+| HashKey Chain mainnet (177) | - | not in the QA config. Mainnet payments run on our own contract, separately |
+
+What the live server does that the published guide does not say, all handled and tested on real replies in
+`hsp_qa/fixtures/`:
+
+| Item | Guide | Live server |
+|---|---|---|
+| `get_chain_config` | tokens nested under networks | flat `networks` + `tokens`, joined by `chain_id`; duplicate rows; several USDC contracts on one chain |
+| `domain.chainId` in `prepare_payment` | a number in the example | a hex string, `"0x14a34"` |
+| `validBefore` | not stated | about 1 h, independent of the 5-minute quote lock (`maxTimeoutSeconds: 3600`) |
+| `gas_fee_advanced` | "the order's field" | in `get_order.gas_fee_configs[]` per network; `true` on Base Sepolia and Arbitrum Sepolia, `false` on Ethereum Sepolia; the payer never needs a gas token, because the Gateway broadcasts |
+| `payment_request_id` | returned by `create_order` | the caller's `details.id` is kept, which lets the Receiving Agent name the payment in its conditions |
+| Token amount | `token_total_raw` | the USD price divided by a live rate (`usd_amount_rate` 0.9997 gives 10003 raw for 0.01 USD) |
+| `query_payment` for an unknown id | not stated | error 10003 `payment not found` |
+| `attribution_verified` | "must be true" | also true on an unpaid order, so it says nothing about payment: always read it together with the status |
+| `query_payment` after a while | `payment-timeout` is a recoverable polling status | about 15 minutes after each payment the tool answers error 10003 `payment timeout` instead of a status (seen on every payment so far; our first payment answered 30001 `payment invalid` before that). The transactions stand on-chain. No payment has reported `payment-finalized` yet. `docs/hsp_receipts.json` states where each status comes from |
+
+**2. HashKey Merchant REST rail: built, tested against our mock only.** The rest of this file describes it. It was
+written before the official server existed, from the official API documentation
 ([hashkey-merchant.github.io](https://hashkey-merchant.github.io/en/index.html): onboarding, authentication,
-api-reference, cart-mandate, webhook, appendix) and checked against the official SDKs
+api-reference, cart-mandate, webhook, appendix) and the official SDKs
 ([hashkey-merchant/sdks](https://github.com/hashkey-merchant/sdks), commit `4ea5f61`) where the docs are silent.
-It switches on as soon as merchant credentials exist. **Nothing here has run against a live HSP gateway yet**: merchant
-credentials have been requested and not issued, so every test below runs against our local mock gateway.
+Merchant credentials for that API were not issued, so every test of it runs against our local mock gateway.
 
 ## What is implemented and tested
 
@@ -31,6 +61,8 @@ EIP-712 domains were read on-chain and checked against `DOMAIN_SEPARATOR()`: has
 `("USD Coin", "2")`, base-sepolia USDC is `("USDC", "2")`, and HashKey Chain mainnet USDC is `("Bridged USDC", "2")`.
 
 ## Payer wire format (unverified against a live gateway)
+
+This section is about rail 2. On rail 1 the official MCP builds the mandate.
 
 The docs publish the merchant API only. For the payer side they give two route names in the architecture diagram
 (`/api/v1/payment/ pay-mandate (submit)` and `flow/:id (status)`) and the ID table (`payment_mandate_id` = ID4 = ID2,
@@ -79,7 +111,7 @@ checkout is on another host than the API, the payer needs `--checkout-host <host
 **Security note.** The HS256 key is the payer's public address, so `user_authorization` binds the two hashes but
 authenticates nobody. The wallet's EIP-3009 signature is what authorizes the transfer.
 
-## What waits on HashKey
+## What waits on HashKey (rail 2 only)
 
 1. **Credentials.** `app_key` / `app_secret` from the merchant console, for the organization registered with our
    public key (`hsp_merchant_public_key.pem`), on hashkey-testnet and base-sepolia USDC. Requested, not issued yet.
@@ -87,9 +119,13 @@ authenticates nobody. The wallet's EIP-3009 signature is what authorizes the tra
    network with a Cloudflare block page ("Sorry, you have been blocked"), from a plain HTTP client and from a regular
    browser alike. We need our address allowlisted, or another route to the QA gateway.
 3. **Confirmation of the payer wire format.** It is built from the checkout's client code, not from documentation, and
-   has only run against our mock. One live payment on QA would settle it, including the conflict above.
+   has only run against our mock. The official MCP now builds this for us on rail 1, so this no longer blocks payments.
 
-## Open questions for HashKey operations
+## Open questions for HashKey operations (rail 2)
+
+Live runs on rail 1 answered two of these: `usd_amount_rate` applies and `gas_fee_advanced` decides whether fees are
+added (6), and `get_chain_config` gives `USDC` as Base Sepolia's EIP-712 name (9). Number 10 stands: we found no public
+source for HashKey testnet USDC.
 
 1. Is the checkout's `POST /api/v1/payment/pay-mandate` (no auth, `{flow_id, payment_mandate}`) the supported way for
    a payment agent (not a browser) to submit a Payment Mandate, or is an agent-facing route planned?

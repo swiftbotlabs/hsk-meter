@@ -10,13 +10,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22V10h3v5h4v-5h3v12h-3v-4h-4v4z' fill='%23fff'/%3E%3Crect x='20' y='15' width='4' height='7' rx='1' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="style.css?v=5">
 <script src="app.js?v=4" defer></script>
+<script src="hsp.js?v=2" defer></script>
 </head>
 <body>
 <main class="wrap">
   <header class="top">
     <p class="brand">Swift Bot Labs</p>
     <h1>HSK Meter</h1>
-    <p class="lede">Per-request payments between agents, settled in USDC.e on HashKey Chain mainnet. Every number below is read
+    <p class="lede">Per-request payments between agents, settled in USDC.e on HashKey Chain mainnet. The mainnet numbers below are read
       in your browser from the public chain explorer.</p>
     <div class="meta-row">
       <span id="source-state" class="pill" role="status" aria-live="polite">Loading from hsk.blockscout.com…</span>
@@ -54,6 +55,20 @@
     <p class="usd-sub" id="usd-sub">Priced with the APRO USDC/USD feed on HashKey Chain</p>
   </section>
   <p id="partial-note" class="partial-note" role="status" hidden></p>
+
+  <section class="card" aria-labelledby="hsp-h">
+    <div class="card-head">
+      <h2 id="hsp-h">Real HSP payments</h2>
+      <p class="card-sub" id="hsp-sum">Loading the receipts…</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th scope="col">Time (UTC)</th><th scope="col">Network</th><th scope="col">flow_id</th><th scope="col">payment_request_id</th><th scope="col">Status</th><th scope="col">attribution_verified</th><th scope="col">Transaction</th></tr></thead>
+        <tbody id="hsp-rows"></tbody>
+      </table>
+    </div>
+    <p class="note">Made through HashKey's official HSP Agentic Payment server under the team name <span class="mono">Swift Bot Labs (HSK Meter)</span>: order, wallet signature, then HSP's Gateway broadcasts the transfer. This is HSP's QA environment with test tokens on public testnets. The HSK Meter contract above settles on HashKey Chain mainnet separately; these payments did not go through it. Status is the last one HSP gave: about 15 minutes after a payment its query answers <span class="mono">payment timeout</span>, a recoverable state in HSP's guide. <a href="hsp_receipts.json">Raw file</a>, <a href="try.html#hsp-h">check one yourself</a>.</p>
+  </section>
 
   <section class="card" aria-labelledby="chart-h">
     <div class="card-head">

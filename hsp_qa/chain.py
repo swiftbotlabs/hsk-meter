@@ -10,9 +10,9 @@ from urllib.parse import urlsplit
 
 import config
 
-ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
-HEX_RE = re.compile(r"^0x[0-9a-fA-F]{0,64}$")
-TX_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
+ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}\Z")
+HEX_RE = re.compile(r"^0x[0-9a-fA-F]{0,64}\Z")
+TX_RE = re.compile(r"^0x[0-9a-fA-F]{64}\Z")
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 

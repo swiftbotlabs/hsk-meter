@@ -74,6 +74,7 @@ class MockState:
         self.oversize = False
         self.schema_variant = "default"    # "alt": payer_address + string-typed payloads
         self.rewrite_pr_id = False
+        self.force_tx = None               # every payment reports this tx hash (one tx claimed for two orders)
         self.query_tamper = None           # callable(reply) -> None, mutates query_payment output
         self.hex_chain_id = False          # the live server sends domain.chainId as a hex string
         self.query_errors = 0
@@ -327,7 +328,8 @@ def t_submit_payment(st, a):
     if st.now() > q["expires"]:
         raise ToolErr(30043, "quote expired, prepare again")
     o = st.orders[flow]
-    st.payments[flow] = {"idx": 0, "tx": "0x" + secrets.token_hex(32), "payer": q["payer"], "order": o}
+    st.payments[flow] = {"idx": 0, "tx": st.force_tx or "0x" + secrets.token_hex(32), "payer": q["payer"], "order": o,
+                         "raw": q["raw"]}
     return {"status": "payment-submitted", "flow_id": flow, "payment_request_id": o["payment_request_id"]}
 
 
@@ -335,7 +337,10 @@ def t_query_payment(st, a):
     if st.query_errors > 0:
         st.query_errors -= 1
         raise ToolErr(50000, "temporary query failure")
-    o = _order(st, a)
+    try:
+        o = _order(st, a)
+    except ToolErr:
+        raise ToolErr(10003, "gateway status 404: code 10003: payment not found") from None   # the live reply
     p = st.payments.get(o["flow_id"])
     if not p:
         return {"status": "payment-required", "attribution_verified": False,
@@ -351,6 +356,7 @@ def t_query_payment(st, a):
                        "network": d["network"], "to_pay_address": o["pay_to"], "payer_address": p["payer"],
                        "chain": f"eip155:{d['chain_id']}", "token": d["coin"], "token_address": d["contract_address"].lower(),
                        "usd_amount": format(o["usd"], "f"), "payment_request_id": o["payment_request_id"],
+                       "pay_amount": format(Decimal(p["raw"]) / 10 ** 6, "f"),
                        "status_reason": "insufficient balance" if status == "payment-failed" else ""}}
     if st.query_tamper:
         st.query_tamper(out)

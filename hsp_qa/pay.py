@@ -254,7 +254,9 @@ def _pay(args, hsp, rows, receipts, account, pay_to, balance_fn, allowance_fn, c
     rc = 0
     for i in range(args.count):
         try:
-            res = flow.run_payment(ctx, token, amount, dry=args.dry, wait_finalized=args.wait_finalized)
+            hours = getattr(args, "cart_hours", None)
+            res = flow.run_payment(ctx, token, amount, dry=args.dry, wait_finalized=args.wait_finalized,
+                                   expiry=time.time() + 3600 * hours if hours else None)
         except flow.FlowStop as e:
             print(f"STOP [{e.reason}]: {json.dumps(e.info, default=str)}")
             return 2
@@ -422,6 +424,7 @@ def main(argv=None):
             p.add_argument("--yes", action="store_true", help="approve signing and submission non-interactively")
             p.add_argument("--wait-finalized", action="store_true", help="keep polling past payment-safe")
             p.add_argument("--receipts")
+            p.add_argument("--cart-hours", type=float, help="cart_expiry this many hours ahead (default 1)")
             p.add_argument("--permit2-spender", action="append",
                            help="extra Permit2 spender to trust (only after reviewing get_chain_config)")
     q = sub.add_parser("query")

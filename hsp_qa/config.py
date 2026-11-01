@@ -68,18 +68,21 @@ PROBE_DEADLINE_UTC = "2026-11-03T14:00:00Z"
 
 # Receiving Agent (receiving_agent.py). Tokens are pinned here and must also appear in the live get_chain_config.
 A2A_TOKENS = {
-    "base-sepolia": (84532, "0x036CbD53842c5426634e7929541eC2318f3dCF7e", "USDC", "eip3009"),
-    "sepolia": (11155111, "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC", "eip3009"),
-    "arbitrum-sepolia": (421614, "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d", "USDC", "eip3009"),
-    "hashkey-testnet": (133, "0x8FE3cB719Ee4410E236Cd6b72ab1fCDC06eF53c6", "USDC", "eip3009"),
+    "base-sepolia": (84532, "0x036CbD53842c5426634e7929541eC2318f3dCF7e", "USDC", 6, "eip3009"),
+    "sepolia": (11155111, "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "USDC", 6, "eip3009"),
+    "arbitrum-sepolia": (421614, "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d", "USDC", 6, "eip3009"),
+    "hashkey-testnet": (133, "0x8FE3cB719Ee4410E236Cd6b72ab1fCDC06eF53c6", "USDC", 6, "eip3009"),
 }
 A2A_PRICES_USD = {"/v1/address-profile": Decimal("0.02")}
 A2A_QUOTE_TTL_S = 900             # the order must be created and paid within this window
 A2A_CLAIM_GRACE_S = 3600          # a paid quote can be claimed this long after it expired (confirmations take time)
-A2A_MIN_CONFIRMATIONS = 2         # blocks on top of the payment before the seller believes its own RPC
+A2A_MIN_CONFIRMATIONS = 2         # blocks counted from the payment's own block before the seller believes its RPC
 A2A_MAX_OPEN_QUOTES = 2000
 A2A_RATE_QUOTES_PER_MIN = 30      # per client IP
-A2A_RATE_CLAIMS_PER_MIN = 20      # per client IP: each claim costs one gateway query and RPC reads
+A2A_RATE_CLAIMS_PER_MIN = 20      # per client IP: a claim costs a few gateway calls and RPC reads
+A2A_UNPAID_RETRY_S = 15           # an unpaid quote is not asked about at the gateway again for this long
+A2A_GATEWAY_TIMEOUT_S = 15        # per gateway call during a claim, so a claim stays well under the buyer's timeout
+A2A_CLAIM_TIMEOUT_S = 180         # how long the buyer waits for one claim; above the seller's worst case
 PAID_STATUSES = frozenset({"payment-safe", "payment-finalized"})
 HSK_MAINNET_RPC = "https://mainnet.hsk.xyz"     # read-only, for the data being sold
 HSK_USDCE = "0x054ed45810DbBAb8B27668922D110669c9D88D0a"
