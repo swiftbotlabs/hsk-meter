@@ -531,10 +531,10 @@ file was written. Full list with flow ids: [docs/hsp_receipts.json](docs/hsp_rec
 | 2026-11-01 12:25 | Arbitrum Sepolia, agent to agent | `fc4daee6-79ab-4a33-9e61-cb9717e9e751` | `HSKM-PR-20261101122526-729979a904f6264f` | payment-safe | true | [`0x03547b71…`](https://arbitrum-sepolia.blockscout.com/tx/0x03547b7196000d775474aa739cd5ff0f71a13e227546f5a3e5345336ee551d69) |
 
 Status and attribution come from HSP's `query_payment`, and every transaction was read back from the chain when this
-table was written. `payment-safe` means on-chain with half of the required confirmations, not `payment-finalized`. About
-15 minutes after a payment, HSP's query starts answering `payment timeout` (error 10003), which the guide describes as a
-recoverable state with delayed reconciliation, so the status above is the last one HSP gave. None of these payments has
-reported `payment-finalized` so far.
+table was written. `payment-safe` means on-chain with half of the required confirmations, not `payment-finalized`. HSP's
+query does not keep answering: 15 to 40 minutes after a payment it returns an error instead of a status (`payment timeout`
+once the order's `cart_expiry` has passed, `payment invalid` before that on orders with a longer cart), so the status
+above is the last one HSP gave. None of these payments has reported `payment-finalized` so far.
 
 ```mermaid
 sequenceDiagram

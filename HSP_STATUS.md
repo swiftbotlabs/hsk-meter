@@ -28,7 +28,7 @@ What the live server does that the published guide does not say, all handled and
 | Token amount | `token_total_raw` | the USD price divided by a live rate (`usd_amount_rate` 0.9997 gives 10003 raw for 0.01 USD) |
 | `query_payment` for an unknown id | not stated | error 10003 `payment not found` |
 | `attribution_verified` | "must be true" | also true on an unpaid order, so it says nothing about payment: always read it together with the status |
-| `query_payment` after a while | `payment-timeout` is a recoverable polling status | about 15 minutes after each payment the tool answers error 10003 `payment timeout` instead of a status (seen on every payment so far; our first payment answered 30001 `payment invalid` before that). The transactions stand on-chain. No payment has reported `payment-finalized` yet. `docs/hsp_receipts.json` states where each status comes from |
+| `query_payment` after a while | keep querying; `payment-timeout` is a recoverable status | the tool stops giving a status: error 10003 `payment timeout` once the order's `cart_expiry` has passed (15 minutes on our A2A orders), and error 30001 `payment invalid` 20 to 40 minutes after payment on orders with a longer cart. The transactions stand on-chain. No payment has reported `payment-finalized` yet. `docs/hsp_receipts.json` states where each status comes from |
 
 **2. HashKey Merchant REST rail: built, tested against our mock only.** The rest of this file describes it. It was
 written before the official server existed, from the official API documentation

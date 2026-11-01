@@ -109,7 +109,8 @@ def main():
            "total_usd": str(sum((Decimal(r["amount_usd"]) for r in good), Decimal(0))),
            "note": "Test tokens on public testnets. HSP QA is HashKey's test environment. The HSK Meter contract settles on "
                    "HashKey Chain mainnet separately; these payments did not go through it. status_source says where each "
-                   "status comes from: about 15 minutes after a payment, HSP's query answers 'payment timeout' (error 10003).",
+                   "status comes from: HSP's query stops answering 15 to 40 minutes after a payment (error 10003 'payment "
+                   "timeout' once the order's cart_expiry has passed, 30001 'payment invalid' before that on longer carts).",
            "receipts": good}
     with open(args.out, "w") as f:
         json.dump(out, f, indent=1)

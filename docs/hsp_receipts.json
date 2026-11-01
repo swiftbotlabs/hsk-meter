@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-01T12:29:39Z",
+ "generated": "2026-11-01T12:43:29Z",
  "environment": "HSP QA server (https://mcp-qa.hashkeymerchant.com/), testnets",
  "merchant_name": "Swift Bot Labs (HSK Meter)",
  "count": 14,
@@ -11,7 +11,7 @@
   "sepolia"
  ],
  "total_usd": "0.26",
- "note": "Test tokens on public testnets. HSP QA is HashKey's test environment. The HSK Meter contract settles on HashKey Chain mainnet separately; these payments did not go through it. status_source says where each status comes from: about 15 minutes after a payment, HSP's query answers 'payment timeout' (error 10003).",
+ "note": "Test tokens on public testnets. HSP QA is HashKey's test environment. The HSK Meter contract settles on HashKey Chain mainnet separately; these payments did not go through it. status_source says where each status comes from: HSP's query stops answering 15 to 40 minutes after a payment (error 10003 'payment timeout' once the order's cart_expiry has passed, 30001 'payment invalid' before that on longer carts).",
  "receipts": [
   {
    "time": "2026-11-01T11:10:00Z",
@@ -252,7 +252,7 @@
    "flow_id": "7697802b-4a07-4238-95a4-848e3d5ed3fa",
    "payment_request_id": "HSKM-PR-20261101121408-1aa0a6",
    "status": "payment-safe",
-   "status_source": "query_payment at 2026-11-01T12:29:36Z",
+   "status_source": "query_payment at 2026-11-01T12:14:29Z (re-query now answers 30001)",
    "attribution_verified": true,
    "amount_usd": "0.01",
    "value_raw": "10002",
@@ -273,7 +273,7 @@
    "flow_id": "e67df292-6b66-4240-aaad-a8dee7324df1",
    "payment_request_id": "HSKM-PR-20261101121450-866813f5984ccaef",
    "status": "payment-safe",
-   "status_source": "query_payment at 2026-11-01T12:29:37Z",
+   "status_source": "query_payment at 2026-11-01T12:17:06Z (re-query now answers 10003)",
    "attribution_verified": true,
    "amount_usd": "0.02",
    "value_raw": "20006",
@@ -294,7 +294,7 @@
    "flow_id": "fc4daee6-79ab-4a33-9e61-cb9717e9e751",
    "payment_request_id": "HSKM-PR-20261101122526-729979a904f6264f",
    "status": "payment-safe",
-   "status_source": "query_payment at 2026-11-01T12:29:38Z",
+   "status_source": "query_payment at 2026-11-01T12:25:49Z (re-query now answers 10003)",
    "attribution_verified": true,
    "amount_usd": "0.02",
    "value_raw": "20004",
