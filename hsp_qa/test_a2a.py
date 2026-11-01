@@ -341,6 +341,18 @@ class TestSellerRefusals(Base):
         self.assertTrue(store.finish(pr, 1200))
         self.assertEqual(store.get(pr).status, "served")
 
+    def test_a_claim_that_lost_its_slot_gets_no_data(self):
+        e = self.e
+        cond = e.paid_quote()
+        pr = cond["payment_request_id"]
+
+        def overtaken(address):           # another claim takes the slot while this one reads
+            e.seller.store.db.execute("UPDATE quotes SET claim_ts = claim_ts + 1 WHERE id = ?", (pr,))
+            return {"address": address}
+        e.seller.reader = overtaken
+        st, body = e.claim(pr)
+        self.assertEqual((st, body.get("error")), (409, "already_served"))
+
     def test_undelivered_answer_reopens_the_claim(self):
         cond = self.e.paid_quote()
         pr = cond["payment_request_id"]

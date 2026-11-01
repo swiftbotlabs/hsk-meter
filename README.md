@@ -72,7 +72,7 @@ sentence lives in this repository, and how far it has been proven.
 | Team | Swift Bot Labs; how we work | [Team](#team) |
 | Solution value | an API can charge 0.025-0.08 USDC.e per call, settled on-chain per request, and the payment comes back automatically when delivery fails; the buyer needs no gas token | [How a request is paid](#how-a-request-is-paid) |
 | Authenticity | every number links to a transaction; what is not done is written down (HSP's gateway ran on testnets, not mainnet) | [live proof](#live-proof-on-mainnet), [real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
-| Code quality | CI on every push runs 469 tests: 326 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
+| Code quality | CI on every push runs 554 tests: 411 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
 
 ## Why it is worth backing
 
@@ -698,7 +698,7 @@ python3 agent/test_mcp.py             # MCP server end to end against the real s
 python3 server/test_ecosystem.py      # APRO feeds (quote USD, gas guard, buyer USD view) and KYC SBT mode (29 offline tests)
 python3 server/test_hsp_gateway.py    # HSP gateway rail against the mock gateway: HMAC, ES256K, carts, webhooks, A2A flow, payer wire format (43 tests)
 python3 hsp_qa/test_hsp_qa.py         # official HSP flow: MCP client, signing firewall on mock and real replies, order checks (107 tests)
-python3 hsp_qa/test_a2a.py            # A2A over HSP: both agents over HTTP, replay, mismatch and policy refusals (87 tests)
+python3 hsp_qa/test_a2a.py            # A2A over HSP: both agents over HTTP, replay, mismatch and policy refusals (88 tests)
 node tools/test_dashboard.js          # dashboard decoder and USD value: only endpoints 1 and 2 of our provider count, hostile logs dropped (35 tests)
 (cd worker && npm ci --omit=dev --ignore-scripts) && node worker/test/run.mjs   # public endpoint: replay, races, wrong amount/endpoint/payer, refund listing, receipts (53 tests)
 python3 worker/test/test_buyer_compat.py   # the unchanged buyer pays the public endpoint's code end to end on the offline chain model (6 tests)

@@ -480,7 +480,7 @@ class TestLiveFixtures(unittest.TestCase):
 
 
     def test_the_gateway_cannot_stretch_the_validity_window(self):
-        far = str(2 ** 31 * 2)                                # moved together, as a lying gateway would
+        far = str(flow._rfc("2096-01-01T00:00:00Z") - 1000)   # moved together, as a lying gateway would
         p = copy.deepcopy(self.prep)
         p["eip712"]["message"]["validBefore"] = far
         p["payment_payload"]["payload"]["authorization"]["validBefore"] = far
