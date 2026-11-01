@@ -1,6 +1,6 @@
 # HSK Meter
 
-[![CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml)
+[![CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml)
 
 **One agent pays another for every API request, in USDC.e on HashKey Chain, settled on-chain per request.**
 If the seller cannot deliver after it has been paid, the payment is refunded on-chain automatically, and on the
@@ -32,29 +32,29 @@ sentence lives in this repository, and how far it has been proven.
 | the Payment Agent constructs a Payment Mandate | `agent/hsp_payer.py`: checks the cart against a pinned merchant key, `cart_hash`, the documented cart rules, the resource, payee and AP2 spending limits, then builds the **Payment Mandate** in the wire format the hosted checkout uses | offline tests; field-by-field sources in [HSP_STATUS.md](HSP_STATUS.md#payer-wire-format-unverified-against-a-live-gateway) |
 | completes the wallet signature | EIP-3009 `TransferWithAuthorization` (EIP-712) over the token's domain as read on-chain, inside the mandate's x402 v2 `payment_payload` | offline tests, plus an independent Node.js check of the encoding |
 | verifies and executes through the existing Gateway of HSP | `server/hsp_gateway.py`: HashKey Merchant client (orders, payment queries, signed webhooks) and submission to `POST /api/v1/payment/pay-mandate` | built and tested against the mock; **not yet run against the live HSP gateway**: merchant credentials are requested and not issued |
-| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live: 47 transactions, 34 paid requests, 6 refunds; [live proof](#live-proof-on-mainnet) and [dashboard](https://swiftbotlab.github.io/hsk-meter/) |
+| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live: 47 transactions, 34 paid requests, 6 refunds; [live proof](#live-proof-on-mainnet) and [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/) |
 
 ## Self-check: six judging dimensions
 
 | Dimension | What there is to check | Evidence |
 |---|---|---|
 | Track fit | every phrase of the track text maps to a component (table above); HSP is used as documented on the merchant side and as the checkout uses it on the payer side | [HSP gateway](#hsp-gateway-cart-mandate-payment-mandate-gateway), [HSP_STATUS.md](HSP_STATUS.md) |
-| Completeness | verified contract on mainnet, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, the HSP gateway rail | [live proof](#live-proof-on-mainnet), [dashboard](https://swiftbotlab.github.io/hsk-meter/), [video](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4) |
+| Completeness | verified contract on mainnet, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, the HSP gateway rail | [live proof](#live-proof-on-mainnet), [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/), [video](https://apps.swiftbotlab.workers.dev/hsk-meter/hsk-meter-demo.mp4) |
 | Team | Swift Bot Labs; how we work | [Team](#team) |
 | Solution value | an API can charge 0.025-0.08 USDC.e per call, settled on-chain per request, and the payment comes back automatically when delivery fails; the buyer needs no gas token | [How a request is paid](#how-a-request-is-paid) |
 | Authenticity | every number links to a transaction; what is not done is written down (no live HSP gateway run yet) | [live proof](#live-proof-on-mainnet), [what waits on HashKey](HSP_STATUS.md#what-waits-on-hashkey) |
-| Code quality | CI on every push runs 300 tests: 210 Python tests with the network refused by a guard (4 more are online-only), 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
+| Code quality | CI on every push runs 300 tests: 210 Python tests with the network refused by a guard (4 more are online-only), 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
 
 ## At a glance
 
-**Live dashboard:** [swiftbotlab.github.io/hsk-meter](https://swiftbotlab.github.io/hsk-meter/) reads the contract's
+**Live dashboard:** [apps.swiftbotlab.workers.dev/hsk-meter](https://apps.swiftbotlab.workers.dev/hsk-meter/) reads the contract's
 events straight from the public explorer in your browser: totals, USDC.e per day, refund rate and the latest payments,
 each linked to its transaction.
 
 **Overview video (1:17, captions):** [YouTube](https://youtu.be/t2yyd76qRlc).
 
-**Demo video (2:54, English voice-over):** [watch in the browser](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4)
-or [download it from the v1.0.0 release](https://github.com/swiftbotlab/hsk-meter/releases/download/v1.0.0/hsk-meter-demo.mp4).
+**Demo video (2:54, English voice-over):** [watch in the browser](https://apps.swiftbotlab.workers.dev/hsk-meter/hsk-meter-demo.mp4)
+or [download it from the v1.0.0 release](https://github.com/swiftbotlabs/hsk-meter/releases/download/v1.0.0/hsk-meter-demo.mp4).
 It shows rows 24-26 of the live-proof table being paid on mainnet, the MCP buyer, a refund, the APRO price feeds and
 the KYC SBT compliant mode.
 
@@ -72,7 +72,7 @@ the KYC SBT compliant mode.
 
 Every row is a real request made over HTTP through the seller in this repository, paid by the buyer client in
 this repository. Rows 1-5 ran v0.1 at the launch prices; rows 6-23 ran the hardened v0.2 inside its sandbox, and rows
-23 and 25 were paid by an MCP client through `agent/mcp_server.py`. Rows 24-26 ran v0.3.0 for the demo video. The [dashboard](https://swiftbotlab.github.io/hsk-meter/)
+23 and 25 were paid by an MCP client through `agent/mcp_server.py`. Rows 24-26 ran v0.3.0 for the demo video. The [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/)
 recomputes the totals from the chain.
 
 | # | Request | Payment path | Transaction |
@@ -517,7 +517,7 @@ Implemented today (`server/hsp_draft.py`, labeled `hsp-draft/swiftbotlab-0`):
 
 ## Run the tests
 
-All of these except the `--online` and live lines run in [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml)
+All of these except the `--online` and live lines run in [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml)
 on every push, with the network refused (`python3 tools/ci_offline.py <suite>`; `--selftest` shows the guard working).
 
 ```sh

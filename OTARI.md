@@ -12,8 +12,8 @@ gateway (`https://otari.ai/api/v1`, OpenAI-compatible).
 
 | | |
 |---|---|
-| Branch | [`otari-gateway`](https://github.com/swiftbotlab/hsk-meter/tree/otari-gateway) (main is the HashKey hackathon entry and stays untouched) |
-| First commit where Otari came in | [`e99914c`](https://github.com/swiftbotlab/hsk-meter/commit/e99914c6d95676de05f4794fa9a433c7b1d4fecb) Otari gateway client |
+| Branch | [`otari-gateway`](https://github.com/swiftbotlabs/hsk-meter/tree/otari-gateway) (main is the HashKey hackathon entry and stays untouched) |
+| First commit where Otari came in | [`e99914c`](https://github.com/swiftbotlabs/hsk-meter/commit/e99914c6d95676de05f4794fa9a433c7b1d4fecb) Otari gateway client |
 | Code | [`server/otari.py`](server/otari.py) (client, key ring), [`server/ai_ask.py`](server/ai_ask.py) (the endpoint), hooks in [`server/seller.py`](server/seller.py) |
 | Otari configuration | [`otari/config.json`](otari/config.json): keys, budgets, ceilings, routing policies, MCP server, web search |
 | Live proof | [`otari/live_runs.json`](otari/live_runs.json): 11 paid calls on mainnet (3 refunded) and 3 refusals before payment, with transactions |
