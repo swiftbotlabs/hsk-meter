@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://hsk-meter.swiftbotlab.workers.dev; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Try HSK Meter without a wallet: verify a payment receipt on HashKey Chain mainnet and watch the paywall refuse a tampered quote.">
+<title>Try HSK Meter</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22V10h3v5h4v-5h3v12h-3v-4h-4v4z' fill='%23fff'/%3E%3Crect x='20' y='15' width='4' height='7' rx='1' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="try.css?v=1">
+<script src="try.js?v=1" defer></script>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <p class="brand">Swift Bot Labs · <a href="./">Live dashboard</a></p>
+    <h1>Try HSK Meter</h1>
+    <p class="lede">No wallet and no money needed. Each button sends one free GET to the public endpoint
+      <span class="mono">hsk-meter.swiftbotlab.workers.dev</span>, which reads HashKey Chain mainnet and answers.
+      Nothing on this page signs or pays.</p>
+  </header>
+
+  <section class="card" aria-labelledby="r-h">
+    <div class="card-head">
+      <h2 id="r-h">1. Check a payment receipt</h2>
+      <p class="card-sub">Paste a transaction hash or a requestId. The verifier reads the settlement contract and gives ACCEPT or REJECT, with every check it ran.</p>
+    </div>
+    <form id="r-form" class="try-form" novalidate>
+      <label for="r-id">Transaction hash or requestId</label>
+      <input id="r-id" class="try-input mono" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="66" placeholder="0x… (64 hex characters)">
+      <details class="try-claim">
+        <summary>Also check a claim about it (optional)</summary>
+        <div class="try-grid">
+          <label for="r-payer">Paid by</label>
+          <input id="r-payer" class="try-input mono" type="text" autocomplete="off" spellcheck="false" maxlength="42" placeholder="0x… (40 hex)">
+          <label for="r-amount">Amount, USDC.e</label>
+          <input id="r-amount" class="try-input" type="text" inputmode="decimal" autocomplete="off" maxlength="14" placeholder="e.g. 0.03">
+          <label for="r-endpoint">Endpoint</label>
+          <input id="r-endpoint" class="try-input" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="1 or 2">
+        </div>
+      </details>
+      <div class="try-actions">
+        <button type="submit" class="btn btn-primary">Check</button>
+      </div>
+    </form>
+    <p class="try-samples-label">Or try one of these:</p>
+    <div class="try-samples">
+      <button type="button" class="btn" data-sample="paid">A paid request</button>
+      <button type="button" class="btn" data-sample="refunded">A refunded request</button>
+      <button type="button" class="btn" data-sample="lie">The same paid request, claimed at 0.01</button>
+    </div>
+    <div id="r-out" class="try-out" role="status" aria-live="polite" hidden></div>
+  </section>
+
+  <section class="card" aria-labelledby="q-h">
+    <div class="card-head">
+      <h2 id="q-h">2. Try to get paid data without paying</h2>
+      <p class="card-sub">Ask for a price, then send the quote back changed. The endpoint has to refuse each one before it serves anything.</p>
+    </div>
+    <ol class="try-steps">
+      <li>
+        <p class="try-step-text">Ask for the price of an address profile. Your browser makes up a throwaway payer address; the endpoint binds the quote to it.</p>
+        <button id="q-get" type="button" class="btn btn-primary">Get a quote</button>
+        <div id="q-quote" class="try-out" role="status" aria-live="polite" hidden></div>
+      </li>
+      <li>
+        <p class="try-step-text">Send the quote back as if you had paid. Every change below should be refused.</p>
+        <div class="try-samples">
+          <button type="button" class="btn" data-attack="flip" disabled>Change one character of the quote</button>
+          <button type="button" class="btn" data-attack="payer" disabled>Use it as a different payer</button>
+          <button type="button" class="btn" data-attack="resource" disabled>Use it for a different address</button>
+          <button type="button" class="btn" data-attack="unpaid" disabled>Send it unchanged, without paying</button>
+        </div>
+        <div id="q-out" class="try-out" role="status" aria-live="polite" hidden></div>
+      </li>
+    </ol>
+    <p class="note">Why it holds: the quote token is a keyed MAC over the endpoint, the payer, the exact request and the price, so any change
+      makes it unknown to the server. The requestId is derived from the token and starts with the payer address, and the endpoint serves only
+      after it reads that requestId as paid on the contract (getPayment), then serves it once.
+      <a href="https://github.com/swiftbotlab/hsk-meter/blob/main/worker/src/core.js" target="_blank" rel="noopener">Read the code</a>.</p>
+  </section>
+
+  <footer class="foot">
+    <p>HSK Meter by Swift Bot Labs · <a href="./">Live dashboard</a> · <a href="https://github.com/swiftbotlab/hsk-meter" target="_blank" rel="noopener">Source on GitHub</a> · MIT</p>
+  </footer>
+</main>
+</body>
+</html>

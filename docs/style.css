@@ -189,3 +189,4 @@ th { color: var(--ink-2); font-weight: 600; }
   .s-paid { background: CanvasText; }
   .s-refund { background: GrayText; }
 }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; color: var(--link); }

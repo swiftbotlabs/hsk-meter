@@ -15,6 +15,11 @@ is under [At a glance](#at-a-glance).
 
 ## Try it now
 
+**No wallet? Use the [try page](https://swiftbotlab.github.io/hsk-meter/try.html):** check any payment receipt
+(ACCEPT or REJECT, with every check), then take a real price quote and send it back changed (one character, another
+payer, another address, or unpaid) and watch the endpoint refuse each one. Every button is one free GET; nothing is
+signed or paid.
+
 **Always-on public endpoint: [hsk-meter.swiftbotlab.workers.dev](https://hsk-meter.swiftbotlab.workers.dev)**, on
 HashKey Chain mainnet. It holds no private key: you pay the settlement contract yourself, and the endpoint checks that
 payment on-chain before it answers. Each payment buys one response; a replay is refused.
