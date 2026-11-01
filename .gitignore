@@ -14,3 +14,8 @@ ops/*.py
 ops/state/*.jsonl
 run/
 ops/state/hsp_payer_ledger.json
+hsp_qa/state/
+hsp_qa/probe.log
+hsp_qa/receipts*.jsonl
+hsp_qa/live_tools.json
+hsp_qa/live_chain_config.json

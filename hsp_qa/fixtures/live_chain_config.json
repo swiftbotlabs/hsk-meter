@@ -1,0 +1,195 @@
+{
+ "fetched": "2026-11-01T11:11:03Z",
+ "config": {
+  "networks": [
+   {
+    "chain_id": 11155111,
+    "display_name": "Ethereum Sepolia",
+    "icon_url": "https://static-stg.hashkeymerchant.com/eth-logo.svg",
+    "is_testnet": true,
+    "name": "sepolia"
+   },
+   {
+    "chain_id": 84532,
+    "display_name": "Base Sepolia",
+    "icon_url": "https://static-stg.hashkeymerchant.com/base-logo.jpeg",
+    "is_testnet": true,
+    "name": "base-sepolia"
+   },
+   {
+    "chain_id": 133,
+    "display_name": "HashKey Chain Testnet",
+    "icon_url": "https://static-stg.hashkeymerchant.com/hsk-logo.svg",
+    "is_testnet": true,
+    "name": "hashkey-testnet"
+   },
+   {
+    "chain_id": 97,
+    "display_name": "Binance Smart Chain Testnet",
+    "icon_url": "https://static-stg.hashkeymerchant.com/bnb-bnb-logo.svg",
+    "is_testnet": true,
+    "name": "bsc-testnet"
+   },
+   {
+    "chain_id": 84532,
+    "display_name": "Base Sepolia",
+    "icon_url": "https://static-stg.hashkeymerchant.com/base-logo.jpeg",
+    "is_testnet": true,
+    "name": "base-sepolia"
+   },
+   {
+    "chain_id": 421614,
+    "display_name": "Arbitrum Sepolia",
+    "icon_url": "https://static-stg.hashkeymerchant.com/arbitrum-arb-logo.svg",
+    "is_testnet": true,
+    "name": "arbitrum-sepolia"
+   }
+  ],
+  "tokens": [
+   {
+    "address": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    "chain_id": 11155111,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USDC",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC",
+    "version": "2"
+   },
+   {
+    "address": "0xff5588b3b38dff1b4b49bfdcbf985e84d8751a0e",
+    "chain_id": 11155111,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdt-logo.svg",
+    "is_stablecoin": true,
+    "name": "Tether USD",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDT",
+    "version": "1"
+   },
+   {
+    "address": "0x31bdac8e4b897e470b70ebe286f94245baa793c2",
+    "chain_id": 11155111,
+    "decimals": 18,
+    "icon_url": "https://static-stg.hashkeymerchant.com/hsk-logo.svg",
+    "is_stablecoin": false,
+    "name": "HSK",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "HSK",
+    "version": "1"
+   },
+   {
+    "address": "0x56dc763551F106c9EA80CCA0521f7a7Bca79eC9E",
+    "chain_id": 11155111,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USDC",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC1",
+    "version": "2"
+   },
+   {
+    "address": "0x0093b27dA6a4A611f31e5c00A89897E874132E66",
+    "chain_id": 11155111,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdt-logo.svg",
+    "is_stablecoin": true,
+    "name": "Tether USD1",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDT1",
+    "version": "1"
+   },
+   {
+    "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "chain_id": 84532,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USDC",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC",
+    "version": "2"
+   },
+   {
+    "address": "0x8FE3cB719Ee4410E236Cd6b72ab1fCDC06eF53c6",
+    "chain_id": 133,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USD Coin",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC",
+    "version": "2"
+   },
+   {
+    "address": "0x372325443233fEbaC1F6998aC750276468c83CC6",
+    "chain_id": 133,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdt-logo.svg",
+    "is_stablecoin": true,
+    "name": "Tether USD",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDT",
+    "version": "1"
+   },
+   {
+    "address": "0xBDec532A2675D3a6a091624b1FE878Ff58a43997",
+    "chain_id": 97,
+    "decimals": 18,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdt-logo.svg",
+    "is_stablecoin": true,
+    "name": "Tether USD",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDT",
+    "version": "1"
+   },
+   {
+    "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "chain_id": 84532,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USDC",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC",
+    "version": "2"
+   },
+   {
+    "address": "0xc52f0FD29292393D253420205BF1dDCc5a0ED224",
+    "chain_id": 421614,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdt-logo.svg",
+    "is_stablecoin": true,
+    "name": "Tether USD",
+    "payment_protocol": "permit2",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDT",
+    "version": "1"
+   },
+   {
+    "address": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    "chain_id": 421614,
+    "decimals": 6,
+    "icon_url": "https://static-stg.hashkeymerchant.com/usdc-logo.svg",
+    "is_stablecoin": true,
+    "name": "USD Coin",
+    "payment_protocol": "eip3009",
+    "permit2_spender": "0x85Afd346143690AFbEc392524A8bae1e9ea8f500",
+    "symbol": "USDC",
+    "version": "2"
+   }
+  ]
+ }
+}

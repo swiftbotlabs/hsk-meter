@@ -58,6 +58,10 @@ class SchemaMismatch(Exception):
     pass
 
 
+class ChainConfigError(Exception):
+    """get_chain_config answered with content we could not read. Never report this as "no token"."""
+
+
 class FlowStop(Exception):
     """Stop the run deliberately (firewall refusal, funding needed, approval withheld, caps)."""
 
@@ -241,9 +245,44 @@ def _find_networks(obj, depth=0):
     return None
 
 
+def _flatten_config(cfg, depth=0):
+    """The live server returns {"networks": [...], "tokens": [...]} with chain_id on each token (the guide nests tokens
+    under networks). Rebuild the nested shape so one parser handles both; the network name comes from chain_id."""
+    if depth > 3 or not isinstance(cfg, dict):
+        return None
+    nets, toks = cfg.get("networks"), cfg.get("tokens")
+    if isinstance(nets, list) and isinstance(toks, list) and not any(isinstance(n, dict) and "tokens" in n for n in nets):
+        names = {}
+        for n in nets[:50]:
+            if isinstance(n, dict):
+                cid = _chain_int(n.get("chain_id", n.get("chainId")))
+                if cid is not None:
+                    names.setdefault(cid, n)
+        out, seen = {}, set()
+        for t in toks[:100]:
+            if not isinstance(t, dict):
+                continue
+            cid = _chain_int(t.get("chain_id", t.get("chainId")))
+            key = (cid, str(t.get("address")).lower())
+            if cid is None or cid not in names or key in seen:
+                continue                                  # a token on an unlisted chain, or a duplicate row
+            seen.add(key)
+            row = dict(t)
+            row.setdefault("eip712_name", t.get("name"))
+            row.setdefault("eip712_version", t.get("version"))
+            out.setdefault(cid, dict(names[cid], tokens=[]))["tokens"].append(row)
+        return list(out.values())
+    for k in ("data", "config", "result", "chain_config"):
+        if k in cfg:
+            r = _flatten_config(cfg[k], depth + 1)
+            if r:
+                return r
+    return None
+
+
 def parse_chain_config(cfg):
     """Return (rows: [TokenRow], rejects: [str]). Tolerant to the exact wrapping; strict about each value."""
-    nets = _find_networks(cfg) or []
+    nets = _flatten_config(cfg) or _find_networks(cfg) or []
     rows, rejects = [], []
     for net in nets[:50]:
         network = net.get("network") or net.get("network_name") or net.get("name")
@@ -284,6 +323,24 @@ def parse_chain_config(cfg):
                 permit2_address=_permit2_addr(t) or _permit2_addr(net),
                 spenders=tuple(_extra_addrs(t) + _extra_addrs(net)), raw=t))
     return rows, rejects
+
+
+def _has_content(v):
+    if isinstance(v, dict):
+        return any(_has_content(x) for x in v.values())
+    if isinstance(v, (list, tuple)):
+        return any(_has_content(x) for x in v)
+    return v not in (None, "", False, 0)
+
+
+def require_rows(cfg, rows, rejects=()):
+    """A server that lists nothing is a fact; a server that lists something we parse to nothing is OUR bug. The second
+    case cost 21 hours on 2026-11-01 (the probe printed 'token NONE' while the allowlist was already open)."""
+    if not rows and _has_content(cfg):
+        shape = sorted(cfg)[:8] if isinstance(cfg, dict) else type(cfg).__name__
+        raise ChainConfigError(f"non-empty get_chain_config parsed to 0 token rows (top-level {shape}; "
+                               f"{len(rejects)} rejected: {list(rejects)[:3]}): the parser no longer fits the server")
+    return rows
 
 
 def select_token(rows, network=None, coin=None, protocol=None):
@@ -390,10 +447,11 @@ def _find_key(obj, key, depth=0):
     return None
 
 
-def build_cart(token, pay_to, amount_usd, now, label="HSK Meter metered API call (HSP QA)"):
+def build_cart(token, pay_to, amount_usd, now, label="HSK Meter metered API call (HSP QA)", pr_id=None, expiry=None):
+    """The Cart Mandate. pr_id / expiry come from the receiving agent's conditions in the A2A flow."""
     stamp = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d%H%M%S")
     cart_id = f"HSKM-QA-{stamp}-{secrets.token_hex(3)}"
-    pr_id = f"HSKM-PR-{stamp}-{secrets.token_hex(3)}"
+    pr_id = pr_id or f"HSKM-PR-{stamp}-{secrets.token_hex(3)}"
     value = format(Decimal(amount_usd).quantize(Decimal("0.01")), "f")
     contents = {
         "id": cart_id,
@@ -406,10 +464,47 @@ def build_cart(token, pay_to, amount_usd, now, label="HSK Meter metered API call
                         "display_items": [{"label": label, "amount": {"currency": "USD", "value": value}}],
                         "total": {"label": "Total", "amount": {"currency": "USD", "value": value}}},
         },
-        "cart_expiry": utc_iso(now + 3600),
+        "cart_expiry": utc_iso(expiry if expiry is not None else now + 3600),
         "merchant_name": config.MERCHANT_NAME,
     }
     return {"contents": contents}, cart_id, pr_id
+
+
+def check_order(got, token, pay_to, amount_usd, pr_id):
+    """get_order must describe the order we created. Returns (field, value) of the first mismatch, or None.
+    Every field is required: the live reply carries all of them, and an order we cannot read is not one we sign for."""
+    if not isinstance(got, dict):
+        return ("order", "not an object")
+    if got.get("merchant_name") != config.MERCHANT_NAME:
+        return ("merchant_name", got.get("merchant_name"))
+    if got.get("payment_request_id") != pr_id:
+        return ("payment_request_id", got.get("payment_request_id"))
+    amt = got.get("payment_amount")
+    try:
+        if not isinstance(amt, dict) or amt.get("currency") != "USD" or Decimal(str(amt.get("value"))) != amount_usd:
+            return ("payment_amount", amt)
+    except ArithmeticError:
+        return ("payment_amount", amt)
+    rows = got.get("method_data")
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        return ("method_data", "expected exactly our one payment method")
+    m = rows[0]
+    if str(m.get("pay_to")).lower() != pay_to.lower():
+        return ("pay_to", m.get("pay_to"))
+    if str(m.get("contract_address")).lower() != token.address.lower():
+        return ("contract_address", m.get("contract_address"))
+    if _chain_int(m.get("chain_id")) != token.chain_id:
+        return ("chain_id", m.get("chain_id"))
+    if m.get("network") != token.network:
+        return ("network", m.get("network"))
+    return None
+
+
+def gas_advanced(got, network):
+    """get_order lists gas treatment per network; absent or ambiguous = None (the firewall then allows a fee)."""
+    found = {c.get("gas_fee_advanced") for c in (got.get("gas_fee_configs") or [])
+             if isinstance(c, dict) and c.get("network") == network}
+    return found.pop() if len(found) == 1 and isinstance(next(iter(found)), bool) else None
 
 
 def _rfc(s):
@@ -445,7 +540,8 @@ def sign_typed(account, typed):
     return sig_hex
 
 
-def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False):
+def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False, label=None, pr_id=None, expiry=None):
+    """One payment. label / pr_id / expiry let a caller build the cart from a receiving agent's conditions."""
     amount_usd = Decimal(str(amount_usd))
     if not (config.MIN_PAYMENT_USD <= amount_usd <= config.PER_PAYMENT_CAP_USD):
         raise FlowStop("cap", detail=f"amount {amount_usd} outside [{config.MIN_PAYMENT_USD}, "
@@ -457,7 +553,8 @@ def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False):
     run_id = uuid.uuid4().hex[:12]
     base = {"run_id": run_id, "merchant_name": config.MERCHANT_NAME, "amount_usd": str(amount_usd)}
     now = ctx.clock()
-    cart, cart_id, our_pr = build_cart(token, ctx.pay_to, amount_usd, now)
+    cart, cart_id, our_pr = build_cart(token, ctx.pay_to, amount_usd, now, label or "HSK Meter metered API call (HSP QA)",
+                                       pr_id, expiry)
     R.log("start", **base, network=token.network, chain_id=token.chain_id, token=token.address, coin=token.coin,
           protocol=token.protocol, payer=payer, pay_to=ctx.pay_to, cart_id=cart_id, dry=dry)
 
@@ -468,27 +565,21 @@ def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False):
     if not (isinstance(flow_id, str) and ID_RE.match(flow_id)) or not (isinstance(pr_id, str) and ID_RE.match(pr_id)):
         R.log("create_order_bad", **base, response=order)
         raise FlowStop("create_order returned no usable flow_id/payment_request_id")
+    if pr_id != our_pr:
+        R.log("create_order_bad", **base, flow_id=flow_id, payment_request_id=pr_id, expected=our_pr)
+        raise FlowStop("create_order changed the payment_request_id", flow_id=flow_id)
     purl = order.get("payment_url")
     R.log("create_order", **base, flow_id=flow_id, payment_request_id=pr_id,
           payment_url=purl.split("?")[0] if isinstance(purl, str) else None)
     ids = {"flow_id": flow_id, "payment_request_id": pr_id}
 
-    got = ctx.hsp.call("get_order", need=("flow_id",), flow_id=flow_id)
-    for key, ours in (("pay_to", ctx.pay_to), ("merchant_name", config.MERCHANT_NAME)):
-        v = _find_key(got, key)
-        if isinstance(v, str) and v and (v.lower() != ours.lower()):
-            R.log("get_order_mismatch", **base, **ids, field=key, got=v)
-            raise FlowStop(f"get_order {key} differs from what we created", **ids)
-    gfa = _find_key(got, "gas_fee_advanced")
-    gfa = gfa if isinstance(gfa, bool) else None
-    R.log("get_order", **base, **ids, status=_find_key(got, "status"), gas_fee_advanced=gfa)
-
-    try:
-        fee = ctx.hsp.call("estimate_fee", flow_id=flow_id, payer=payer, protocol=token.protocol)
-        R.log("estimate_fee", **base, **ids, gas_fee=_find_key(fee, "gas_fee"),
-              gas_fee_advanced=_find_key(fee, "gas_fee_advanced"))
-    except (HspError, SchemaMismatch, McpError) as e:
-        R.log("estimate_fee_error", **base, **ids, error=str(e))
+    got = container_with(ctx.hsp.call("get_order", need=("flow_id",), flow_id=flow_id), "method_data")
+    bad = check_order(got, token, ctx.pay_to, amount_usd, pr_id)
+    if bad:
+        R.log("get_order_mismatch", **base, **ids, field=bad[0], got=bad[1])
+        raise FlowStop(f"get_order {bad[0]} differs from what we created", **ids)
+    gfa = gas_advanced(got, token.network)
+    R.log("get_order", **base, **ids, status=got.get("status"), gas_fee_advanced=gfa)
 
     submitted = False
     sub_status = None
@@ -508,6 +599,10 @@ def run_payment(ctx, token, amount_usd, *, dry=False, wait_finalized=False):
         try:
             verdict = firewall.check(prep, exp, now=ctx.clock(), quote_expires_at=qexp)
         except firewall.Refused as e:
+            td = _find_key(prep, "eip712")
+            if isinstance(td, dict):                  # public typed data: keep it, a refusal must be diagnosable
+                R.log("firewall_refused_detail", **base, **ids, domain=td.get("domain"), primaryType=td.get("primaryType"),
+                      message=td.get("message"), types=sorted(td.get("types") or {}))
             R.log("firewall_refused", **base, **ids, rule=e.rule, detail=e.detail)
             raise FlowStop("firewall_refused", rule=e.rule, detail=e.detail, **ids) from None
         s = verdict.summary

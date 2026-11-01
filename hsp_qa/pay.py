@@ -73,6 +73,16 @@ def plog(msg):
         f.write(line + "\n")
 
 
+def note_state(key, value):
+    """One loud line whenever what the server shows us changes. A quiet log hid an open allowlist for 21 hours."""
+    with State() as s:
+        changes = s.d.setdefault("seen", {})
+        old = changes.get(key)
+        changes[key] = value
+    if old != value:
+        plog(f"*** HSP QA STATE CHANGE *** {key}: {old!r} -> {value!r}")
+
+
 def guard_live():
     """Refuse a live contact if the endpoint answered 403 less than PROBE_MIN_INTERVAL_S ago."""
     with State() as s:
@@ -118,6 +128,7 @@ def discover(hsp, save=False):
         with open(config.LIVE_CHAIN_CONFIG_FILE, "w") as f:
             json.dump({"fetched": _now_iso(), "config": cfg}, f, indent=1)
     rows, rejects = flow.parse_chain_config(cfg)
+    flow.require_rows(cfg, rows, rejects)
     return tools, cfg, rows, rejects
 
 
@@ -183,6 +194,7 @@ def cmd_health(args):
         if ok and not s.d.get("allowlisted_iso"):
             s.d["allowlisted_iso"] = _now_iso()
     plog(f"health: HTTP {st} {body[:120]!r} -> {'ALLOWLISTED' if ok else 'not reachable'}")
+    note_state("reachable", ok)
     return 0 if ok else 3
 
 
@@ -197,6 +209,9 @@ def cmd_discover(args):
     except flow.MissingTools as e:
         print(f"STOP: {e}")
         return 2
+    except flow.ChainConfigError as e:
+        print(f"ERROR: {e}")
+        return 4
     print(f"server: {hsp.mcp.server_info}  protocol {hsp.mcp.protocol_version}  session "
           f"{'yes' if hsp.mcp.session_id else 'no'}")
     print("tools:", ", ".join(sorted(t["name"] for t in tools)))
@@ -281,6 +296,9 @@ def cmd_pay(args):
     except flow.MissingTools as e:
         print(f"STOP: {e}")
         return 2
+    except flow.ChainConfigError as e:
+        print(f"ERROR: {e}")
+        return 4
     return _pay(args, hsp, rows, receipts, account, pay_to, chain.balance_of, chain.allowance)
 
 
@@ -341,12 +359,19 @@ def cmd_probe(args):
         record_blocked("probe-discover")
         plog(f"probe: discover BLOCKED: {e}")
         return 0
+    except flow.ChainConfigError as e:
+        plog(f"probe: ERROR {e}")
+        note_state("discovery", "ERROR: chain config unreadable")
+        return 0
     except (McpError, flow.MissingTools, flow.HspError) as e:
         plog(f"probe: discover failed: {e}")
         return 0
     token = flow.select_token(rows)
-    plog(f"probe: discovered {len(tools)} tools; token "
-         + (f"{token.network}/{token.chain_id} {token.coin} {token.address} {token.protocol}" if token else "NONE"))
+    offered = f"{len(tools)} tools, {len(rows)} token rows, " + (
+        f"{token.network}/{token.chain_id} {token.coin} {token.address} {token.protocol}" if token
+        else "no testnet USD stablecoin among the rows")
+    plog(f"probe: discovered {offered}")
+    note_state("discovery", offered)
     if not token:
         return 0
     account = wallets.load_payer()

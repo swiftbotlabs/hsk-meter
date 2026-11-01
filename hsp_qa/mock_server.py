@@ -9,6 +9,7 @@ expired quote. Knobs on MockState let tests tamper payloads, delay tools, force 
 
 Run standalone:  python3 mock_server.py [port]
 """
+import base64
 import hashlib
 import json
 import secrets
@@ -72,6 +73,9 @@ class MockState:
         self.redirect = False
         self.oversize = False
         self.schema_variant = "default"    # "alt": payer_address + string-typed payloads
+        self.rewrite_pr_id = False
+        self.query_tamper = None           # callable(reply) -> None, mutates query_payment output
+        self.hex_chain_id = False          # the live server sends domain.chainId as a hex string
         self.query_errors = 0
         self.clock = time.time
         self.hits = 0
@@ -106,7 +110,9 @@ def _schemas(variant):
          "inputSchema": s({"signature": {"type": "string"}, "payment_payload": obj,
                            "payment_mandate_contents": obj, "cart_hash": {"type": "string"}},
                           ["signature", "payment_payload", "payment_mandate_contents", "cart_hash"])},
-        {"name": "estimate_fee", "inputSchema": s({"flow_id": {"type": "string"}}, ["flow_id"])},
+        {"name": "estimate_fee", "inputSchema": s({"payment_request_id": {"type": "string"}, "payment_payload": {"type": "string"},
+                                                   "merchant_name": {"type": "string"}},
+                                                  ["payment_request_id", "payment_payload", "merchant_name"])},
         {"name": "submit_payment",
          "inputSchema": s({"payment_mandate_json": {"type": "string"}}, ["payment_mandate_json"])},
         {"name": "query_payment",
@@ -116,8 +122,14 @@ def _schemas(variant):
 
 
 def _token_for(st, network, contract):
-    for n in st.chain_config["networks"]:
-        for t in n["tokens"]:
+    cfg = st.chain_config
+    if isinstance(cfg.get("tokens"), list):         # the live, flat shape: networks + tokens with chain_id
+        for n in cfg["networks"]:
+            for t in cfg["tokens"]:
+                if n["name"] == network and t["chain_id"] == n["chain_id"] and t["address"].lower() == contract.lower():
+                    return n, t
+    for n in cfg["networks"]:
+        for t in n.get("tokens", ()):
             if n["network"] == network and t["address"].lower() == contract.lower():
                 return n, t
     raise ToolErr(10001, "token not supported")
@@ -158,7 +170,9 @@ def t_create_order(st, a):
     d = md[0]["data"]
     _token_for(st, d.get("network"), d.get("contract_address"))
     flow_id = "flow_" + secrets.token_hex(8)
-    pr_id = "PR" + secrets.token_hex(8)
+    pr_id = (pr.get("details") or {}).get("id") or "PR" + secrets.token_hex(8)   # live: the caller's details.id is kept
+    if st.rewrite_pr_id:
+        pr_id = "PR-rewritten-by-server"
     st.orders[flow_id] = {"flow_id": flow_id, "payment_request_id": pr_id, "merchant_name": name, "pay_to": pay_to,
                           "usd": Decimal(str(tot.get("value"))), "method": d, "contents": c}
     return {"flow_id": flow_id, "payment_request_id": pr_id, "payment_url": f"https://mock.invalid/pay/{flow_id}"}
@@ -174,15 +188,14 @@ def _order(st, a):
 
 def t_get_order(st, a):
     o = _order(st, a)
-    return {"flow_id": o["flow_id"], "payment_request_id": o["payment_request_id"], "merchant_name": o["merchant_name"],
-            "pay_to": o["pay_to"], "status": "payment-required",
-            "amount": {"currency": "USD", "value": format(o["usd"], "f")},
-            "network": o["method"]["network"], "coin": o["method"]["coin"], "gas_fee_advanced": st.gas_fee_advanced}
+    return {"payment_request_id": o["payment_request_id"], "merchant_name": o["merchant_name"],
+            "status": "payment-required", "payment_amount": {"currency": "USD", "value": format(o["usd"], "f")},
+            "method_data": [dict(o["method"])],
+            "gas_fee_configs": [{"network": o["method"]["network"], "gas_fee_advanced": st.gas_fee_advanced}]}
 
 
 def t_estimate_fee(st, a):
-    _order(st, a)
-    return {"gas_fee": format(st.gas_fee_usd, "f"), "gas_fee_advanced": st.gas_fee_advanced}
+    raise ToolErr(10001, "the flow does not call estimate_fee: prepare_payment locks the quote")
 
 
 def t_prepare_payment(st, a):
@@ -201,7 +214,7 @@ def t_prepare_payment(st, a):
     dom_t = [{"name": "name", "type": "string"}, {"name": "version", "type": "string"},
              {"name": "chainId", "type": "uint256"}, {"name": "verifyingContract", "type": "address"}]
     if proto == "eip3009":
-        e = tok.get("eip712") or {"name": "USD Coin", "version": "2"}
+        e = tok.get("eip712") or {"name": tok.get("name", "USD Coin"), "version": tok.get("version", "2")}
         auth = {"from": payer, "to": o["pay_to"], "value": str(raw), "validAfter": str(now - 5),
                 "validBefore": str(now + st.valid_s), "nonce": "0x" + secrets.token_hex(32)}
         eip712 = {"domain": {"name": e["name"], "version": e["version"], "chainId": chain_id,
@@ -230,6 +243,8 @@ def t_prepare_payment(st, a):
         payload_inner = {"signature": "", "permit2Authorization": eip712["message"]}
     cart_hash = hashlib.sha256(_canon(o["contents"]).encode()).hexdigest()
     pdid = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d%H%M%S") + f"{secrets.randbelow(10**6):06d}"
+    if st.hex_chain_id:
+        eip712["domain"]["chainId"] = hex(chain_id)
     prep = {
         "eip712": eip712, "cart_hash": cart_hash, "token_total_raw": str(raw),
         "quote_expires_at": _iso(now + st.quote_ttl), "pay_to": o["pay_to"], "payer": payer,
@@ -243,6 +258,9 @@ def t_prepare_payment(st, a):
                                                                "amount": {"currency": "USD", "value": str(usd)}},
                                      "merchant_agent": "HashkeyMerchant", "timestamp": _iso(now)},
     }
+    prep["payment_mandate_contents"]["payment_response"] = {
+        "request_id": o["payment_request_id"], "method_name": "https://www.x402.org",
+        "details": {"payment_payload": base64.b64encode(_canon(prep["payment_payload"]).encode()).decode()}}
     st.quotes[o["flow_id"]] = {"expires": now + st.quote_ttl, "cart_hash": cart_hash, "payer": payer,
                                "eip712": json.loads(json.dumps(eip712)), "raw": raw}
     if st.tamper:
@@ -254,6 +272,9 @@ def t_prepare_payment(st, a):
 def _verify_sig(eip712, sig):
     from eth_account import Account
     from eth_account.messages import encode_typed_data
+    eip712 = json.loads(json.dumps(eip712))
+    if isinstance(eip712["domain"].get("chainId"), str):
+        eip712["domain"]["chainId"] = int(eip712["domain"]["chainId"], 16)
     return Account.recover_message(encode_typed_data(full_message=eip712), signature=sig)
 
 
@@ -323,12 +344,17 @@ def t_query_payment(st, a):
     p["idx"] += 1
     included = st.status_seq.index(status) >= (st.status_seq.index("payment-included")
                                                if "payment-included" in st.status_seq else 0)
-    return {"status": status, "flow_id": o["flow_id"], "payment_request_id": o["payment_request_id"],
-            "attribution_verified": a.get("expected_merchant_name") == o["merchant_name"],
-            "payment": {"status": status, "tx_signature": p["tx"] if included and status != "payment-failed" else "",
-                        "network": o["method"]["network"], "to_pay_address": o["pay_to"],
-                        "payer_address": p["payer"],
-                        "status_reason": "insufficient balance" if status == "payment-failed" else ""}}
+    d = o["method"]
+    out = {"status": status, "flow_id": o["flow_id"], "payment_request_id": o["payment_request_id"],
+           "merchant_name": o["merchant_name"], "attribution_verified": a.get("expected_merchant_name") == o["merchant_name"],
+           "payment": {"status": status, "tx_signature": p["tx"] if included and status != "payment-failed" else "",
+                       "network": d["network"], "to_pay_address": o["pay_to"], "payer_address": p["payer"],
+                       "chain": f"eip155:{d['chain_id']}", "token": d["coin"], "token_address": d["contract_address"].lower(),
+                       "usd_amount": format(o["usd"], "f"), "payment_request_id": o["payment_request_id"],
+                       "status_reason": "insufficient balance" if status == "payment-failed" else ""}}
+    if st.query_tamper:
+        st.query_tamper(out)
+    return out
 
 
 TOOLS = {f.__name__[2:]: f for f in (t_get_chain_config, t_create_order, t_get_order, t_estimate_fee,

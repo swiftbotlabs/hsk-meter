@@ -8,6 +8,9 @@ payer, our pay_to, the token row from get_chain_config, our caps) and refuse on 
 check() returns a Verdict with the NORMALISED typed data (ints as int, addresses checksummed). The caller signs that
 normalised copy, so the bytes we verified are the bytes we sign (it hashes identically to the gateway's copy).
 """
+import base64
+import binascii
+import json
 import re
 import time
 from dataclasses import dataclass, field
@@ -109,6 +112,36 @@ def _rfc3339(s):
         return None
 
 
+def _decimal(v):
+    try:
+        d = Decimal(str(v))
+    except ArithmeticError:
+        return None
+    return d if d.is_finite() and d >= 0 else None
+
+
+def _b64json(s):
+    if not isinstance(s, str) or len(s) > 8192:
+        raise Refused("mandate", "payment_payload in the mandate is not a bounded base64 string")
+    try:
+        obj = json.loads(base64.b64decode(s, validate=True))
+    except (binascii.Error, ValueError):
+        raise Refused("mandate", "payment_payload in the mandate is not base64 JSON") from None
+    if not isinstance(obj, dict):
+        raise Refused("mandate", "payment_payload in the mandate is not an object")
+    return obj
+
+
+def _unsigned(pp):
+    """A copy of an x402 payload without its signature (empty until finalize_payment), for comparing two copies."""
+    if not isinstance(pp, dict):
+        return pp
+    out = json.loads(json.dumps(pp))
+    if isinstance(out.get("payload"), dict):
+        out["payload"].pop("signature", None)
+    return out
+
+
 def raw_units(usd, decimals, rounding=ROUND_FLOOR):
     return int((Decimal(usd) * (Decimal(10) ** decimals)).to_integral_value(rounding=rounding))
 
@@ -170,7 +203,10 @@ def check(prepared, exp, *, now=None, quote_expires_at=None):
             raise Refused("domain", "EIP712Domain fields do not match the domain object")
     if set(domain) - set(DOMAIN_FIELD_TYPES) or not {"chainId", "verifyingContract"} <= set(domain):
         raise Refused("domain", f"unexpected domain fields {sorted(domain)}")
-    chain_id = _uint(domain.get("chainId"), "domain.chainId")
+    raw_chain = domain.get("chainId")
+    if isinstance(raw_chain, str) and re.fullmatch(r"0x[0-9a-fA-F]{1,16}", raw_chain):
+        raw_chain = int(raw_chain, 16)                # the live server sends a hex string ("0x14a34"), the guide a number
+    chain_id = _uint(raw_chain, "domain.chainId")
     if chain_id != tok.chain_id:
         raise Refused("chain", f"domain.chainId {chain_id} != config chain {tok.chain_id}")
     vc = _addr(domain.get("verifyingContract"), "domain.verifyingContract")
@@ -307,6 +343,23 @@ def check(prepared, exp, *, now=None, quote_expires_at=None):
                 raise Refused("amount" if k == "value" else "expiry", f"payment_payload authorization.{k} differs")
         if auth.get("nonce") is not None and str(auth["nonce"]).lower() != norm_msg["nonce"].lower():
             raise Refused("message", "payment_payload authorization.nonce differs")
+
+    # --- the mandate carries a second, base64 copy of that payload plus the USD total: both must agree too ---
+    pmc = prepared.get("payment_mandate_contents")
+    if isinstance(pmc, dict):
+        if exp.payment_request_id and pmc.get("payment_mandate_id") not in (None, exp.payment_request_id):
+            raise Refused("payment_request_id", "the Payment Mandate refers to a different payment request")
+        total = pmc.get("payment_details_total")
+        total = total.get("amount") if isinstance(total, dict) else None
+        if isinstance(total, dict):
+            usd = _decimal(total.get("value"))
+            if total.get("currency") != "USD" or usd is None or usd > order_usd * slack + fee:
+                raise Refused("amount", "the Payment Mandate's USD total exceeds what our order allows")
+        resp = pmc.get("payment_response")
+        details = resp.get("details") if isinstance(resp, dict) else None
+        inner = details.get("payment_payload") if isinstance(details, dict) else None
+        if inner is not None and _unsigned(_b64json(inner)) != _unsigned(pp):
+            raise Refused("mandate", "the base64 payload inside the Payment Mandate differs from payment_payload")
 
     typed = {"types": norm_types, "domain": norm_domain, "primaryType": primary, "message": norm_msg}
     summary = {"protocol": tok.protocol, "network": tok.network, "chain_id": chain_id, "token": tok.address,

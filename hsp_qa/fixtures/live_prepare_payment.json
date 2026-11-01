@@ -1,0 +1,120 @@
+{
+ "cart_hash": "e13139a2c7a219cab39f5723386bafca6b81962afc3b755f190695af0cd48233",
+ "eip712": {
+  "domain": {
+   "chainId": "0x14a34",
+   "name": "USDC",
+   "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+   "version": "2"
+  },
+  "message": {
+   "from": "0x97ec2B82563BAd972FDb279e8709cB84eDFA86bA",
+   "nonce": "0xdc7dc84a79d98d69d3ee4858b924133eec72dba8a8b7787524d71b17221e28ca",
+   "to": "0x58232CF98671Bc0Bd0E7aaA7cd6adE9EdB2E64A6",
+   "validAfter": "0",
+   "validBefore": "1793535406",
+   "value": "10002"
+  },
+  "primaryType": "TransferWithAuthorization",
+  "types": {
+   "EIP712Domain": [
+    {
+     "name": "name",
+     "type": "string"
+    },
+    {
+     "name": "version",
+     "type": "string"
+    },
+    {
+     "name": "chainId",
+     "type": "uint256"
+    },
+    {
+     "name": "verifyingContract",
+     "type": "address"
+    }
+   ],
+   "TransferWithAuthorization": [
+    {
+     "name": "from",
+     "type": "address"
+    },
+    {
+     "name": "to",
+     "type": "address"
+    },
+    {
+     "name": "value",
+     "type": "uint256"
+    },
+    {
+     "name": "validAfter",
+     "type": "uint256"
+    },
+    {
+     "name": "validBefore",
+     "type": "uint256"
+    },
+    {
+     "name": "nonce",
+     "type": "bytes32"
+    }
+   ]
+  }
+ },
+ "pay_to": "0x58232CF98671Bc0Bd0E7aaA7cd6adE9EdB2E64A6",
+ "payer": "0x97ec2B82563BAd972FDb279e8709cB84eDFA86bA",
+ "payment_details_id": "dbc7d3c0-6cf1-49bc-b56e-8104ec9e3767",
+ "payment_details_total": "0.01",
+ "payment_mandate_contents": {
+  "merchant_agent": "HSP Agentic Payment",
+  "payment_details_id": "dbc7d3c0-6cf1-49bc-b56e-8104ec9e3767",
+  "payment_details_total": {
+   "amount": {
+    "currency": "USD",
+    "value": "0.01"
+   },
+   "label": "Total"
+  },
+  "payment_mandate_id": "HSKM-PR-20261101111644-0fce6a",
+  "payment_response": {
+   "details": {
+    "payment_payload": "eyJhY2NlcHRlZCI6eyJhbW91bnQiOiIxMDAwMiIsImFzc2V0IjoiMHgwMzZDYkQ1Mzg0MmM1NDI2NjM0ZTc5Mjk1NDFlQzIzMThmM2RDRjdlIiwiZXh0cmEiOnsibmFtZSI6IlVTREMiLCJwcm90b2NvbCI6ImVpcDMwMDkiLCJ2ZXJzaW9uIjoiMiJ9LCJtYXhUaW1lb3V0U2Vjb25kcyI6MzYwMCwibmV0d29yayI6ImVpcDE1NTo4NDUzMiIsInBheVRvIjoiMHg1ODIzMkNGOTg2NzFCYzBCZDBFN2FhQTdjZDZhZEU5RWRCMkU2NEE2Iiwic2NoZW1lIjoiZXhhY3QifSwicGF5bG9hZCI6eyJhdXRob3JpemF0aW9uIjp7ImZyb20iOiIweDk3ZWMyQjgyNTYzQkFkOTcyRkRiMjc5ZTg3MDljQjg0ZURGQTg2YkEiLCJub25jZSI6IjB4ZGM3ZGM4NGE3OWQ5OGQ2OWQzZWU0ODU4YjkyNDEzM2VlYzcyZGJhOGE4Yjc3ODc1MjRkNzFiMTcyMjFlMjhjYSIsInRvIjoiMHg1ODIzMkNGOTg2NzFCYzBCZDBFN2FhQTdjZDZhZEU5RWRCMkU2NEE2IiwidmFsaWRBZnRlciI6IjAiLCJ2YWxpZEJlZm9yZSI6IjE3OTM1MzU0MDYiLCJ2YWx1ZSI6IjEwMDAyIn0sInNpZ25hdHVyZSI6IiJ9LCJ4NDAyVmVyc2lvbiI6Mn0="
+   },
+   "method_name": "https://www.x402.org",
+   "request_id": "HSKM-PR-20261101111644-0fce6a"
+  },
+  "timestamp": "2026-11-01T11:16:46Z"
+ },
+ "payment_payload": {
+  "accepted": {
+   "amount": "10002",
+   "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+   "extra": {
+    "name": "USDC",
+    "protocol": "eip3009",
+    "version": "2"
+   },
+   "maxTimeoutSeconds": 3600,
+   "network": "eip155:84532",
+   "payTo": "0x58232CF98671Bc0Bd0E7aaA7cd6adE9EdB2E64A6",
+   "scheme": "exact"
+  },
+  "payload": {
+   "authorization": {
+    "from": "0x97ec2B82563BAd972FDb279e8709cB84eDFA86bA",
+    "nonce": "0xdc7dc84a79d98d69d3ee4858b924133eec72dba8a8b7787524d71b17221e28ca",
+    "to": "0x58232CF98671Bc0Bd0E7aaA7cd6adE9EdB2E64A6",
+    "validAfter": "0",
+    "validBefore": "1793535406",
+    "value": "10002"
+   },
+   "signature": ""
+  },
+  "x402Version": 2
+ },
+ "payment_request_id": "HSKM-PR-20261101111644-0fce6a",
+ "quote_expires_at": "2026-11-01T11:21:46Z",
+ "token_total_raw": "10002"
+}

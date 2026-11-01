@@ -3,6 +3,7 @@
 Run: ./run_tests.sh   (or wallet-venv python -I test_hsp_qa.py)
 """
 import atexit
+import base64
 import contextlib
 import shutil
 import copy
@@ -50,6 +51,33 @@ USDT133 = firewall.TokenRow("hashkey-testnet", 133, "USDT", "0x372325443233fEbaC
 def new_acct():
     return Account.from_key(os.urandom(32))
 
+
+
+
+class TestLiveConfigShape(unittest.TestCase):
+    """2026-11-01: the live get_chain_config is flat (networks + tokens with chain_id); the nested-only parser returned
+    no rows, so the probe logged 'token NONE' for 21 h after the allowlist opened."""
+    FILE = os.path.join(HERE, "fixtures", "live_chain_config.json")
+
+    def rows(self):
+        with open(self.FILE) as f:
+            return flow.parse_chain_config(json.load(f)["config"])
+
+    def test_flat_config_parses(self):
+        rows, rejects = self.rows()
+        self.assertEqual(rejects, [])
+        self.assertGreaterEqual(len(rows), 10)
+        base = [r for r in rows if r.chain_id == 84532]
+        self.assertEqual(len(base), 1)                     # the duplicate row collapses
+        self.assertEqual(base[0].network, "base-sepolia")
+        self.assertEqual(base[0].protocol, "eip3009")
+        self.assertEqual(base[0].eip712_version, "2")
+
+    def test_select_token_prefers_hashkey_then_filters(self):
+        rows, _ = self.rows()
+        self.assertEqual(flow.select_token(rows).chain_id, 133)
+        self.assertEqual(flow.select_token(rows, network="base-sepolia", coin="USDC").address,
+                         "0x036CbD53842c5426634e7929541eC2318f3dCF7e")
 
 class MockEnv:
     """A mock server + Hsp + Ctx wired together."""
@@ -359,6 +387,235 @@ class TestFirewallPermit2(FirewallBase):
 
 
 # =============================================================== MCP client
+class TestHexChainId(FirewallBase):
+    """The live prepare_payment sends domain.chainId as a hex string ("0x14a34"). The firewall must read it as a number,
+    compare it to the configured chain and sign the integer form: same chain passes, any other chain is refused."""
+
+    def test_hex_for_the_right_chain_passes_and_hashes_like_the_decimal(self):
+        p = copy.deepcopy(self.prep)
+        p["eip712"]["domain"]["chainId"] = hex(self.tokrow.chain_id)
+        v_hex, v_dec = firewall.check(p, self.exp), firewall.check(self.prep, self.exp)
+        self.assertEqual(v_hex.typed_data["domain"]["chainId"], self.tokrow.chain_id)
+        self.assertEqual(v_hex.typed_data, v_dec.typed_data)
+
+    def test_hex_for_a_wrong_chain_is_refused(self):
+        for wrong in (177, 84532, 1):
+            self.refuse(lambda p: p["eip712"]["domain"].update(chainId=hex(wrong)), "chain")
+
+    def test_malformed_hex_is_refused(self):
+        for bad in ("0x", "0xZZ", "0X85", "85h", "0x" + "f" * 17, " 0x85", True, None, -133, 1.5):
+            self.refuse(lambda p: p["eip712"]["domain"].update(chainId=bad), "malformed")
+
+    def test_mock_server_hex_e2e_and_tamper(self):
+        env = MockEnv(hex_chain_id=True)                     # positive control: the mock verifies our signature
+        try:
+            res = flow.run_payment(env.ctx, flow.select_token(env.rows), Decimal("0.01"), wait_finalized=True)
+            self.assertEqual(res["status"], "payment-finalized")
+            env.st.tamper = lambda p: p["eip712"]["domain"].update(chainId=hex(177))   # same server, wrong chain
+            with self.assertRaises(flow.FlowStop) as cm:
+                flow.run_payment(env.ctx, flow.select_token(env.rows), Decimal("0.01"))
+            self.assertEqual((cm.exception.reason, cm.exception.info.get("rule")), ("firewall_refused", "chain"))
+            self.assertEqual(len(env.calls("finalize_payment")), 1)   # the first payment only: nothing was signed
+        finally:
+            env.close()
+
+
+class TestLiveFixtures(unittest.TestCase):
+    """The real prepare_payment reply and chain config from HSP's QA server drive the firewall, not a mock's guess."""
+
+    def setUp(self):
+        with open(os.path.join(HERE, "fixtures", "live_chain_config.json")) as f:
+            rows, _ = flow.parse_chain_config(json.load(f)["config"])
+        self.token = flow.select_token(rows, "base-sepolia", "USDC")
+        with open(os.path.join(HERE, "fixtures", "live_prepare_payment.json")) as f:
+            self.prep = json.load(f)
+        self.pr = self.prep["payment_request_id"]
+        self.now = flow._rfc(self.prep["quote_expires_at"]) - 60
+        self.exp = firewall.Expectation(payer=self.prep["payer"], pay_to=self.prep["pay_to"], token=self.token,
+                                        order_usd=Decimal("0.01"), gas_fee_advanced=True, payment_request_id=self.pr)
+
+    def check(self, p):
+        return firewall.check(p, self.exp, now=self.now, quote_expires_at=flow._rfc(p["quote_expires_at"]))
+
+    def refuse(self, mutate, rule):
+        p = copy.deepcopy(self.prep)
+        mutate(p)
+        with self.assertRaises(firewall.Refused) as cm:
+            self.check(p)
+        self.assertEqual(cm.exception.rule, rule, str(cm.exception))
+
+    def test_positive_control_real_reply_passes_and_signs(self):
+        v = self.check(self.prep)
+        self.assertEqual(v.summary["recipient"], self.prep["pay_to"].lower())
+        self.assertEqual(str(v.token_total_raw), self.prep["token_total_raw"])
+        acct = new_acct()
+        self.assertEqual(len(flow.sign_typed(acct, v.typed_data)), 132)
+
+    def test_tampered_copies_refused_before_signing(self):
+        def everywhere(p, **f):         # change the signed message and the x402 copy together, so only the guard can catch it
+            p["eip712"]["message"].update(f)
+            p["payment_payload"]["payload"]["authorization"].update(f)
+        def mandate_b64(p):
+            inner = json.loads(base64.b64decode(
+                p["payment_mandate_contents"]["payment_response"]["details"]["payment_payload"]))
+            inner["payload"]["authorization"]["to"] = ATTACKER
+            p["payment_mandate_contents"]["payment_response"]["details"]["payment_payload"] = \
+                base64.b64encode(json.dumps(inner).encode()).decode()
+        self.refuse(lambda p: everywhere(p, to=ATTACKER), "recipient")
+        self.refuse(lambda p: p["eip712"]["message"].update(value="10003"), "amount")
+        self.refuse(lambda p: (everywhere(p, value="1000001"), p.update(token_total_raw="1000001")), "cap")
+        self.refuse(lambda p: (everywhere(p, value="20000"), p.update(token_total_raw="20000")), "amount")
+        self.refuse(lambda p: p["eip712"]["domain"].update(chainId="0x1"), "chain")
+        self.refuse(lambda p: p["eip712"]["domain"].update(verifyingContract=ATTACKER), "token")
+        self.refuse(mandate_b64, "mandate")
+        self.refuse(lambda p: p["payment_mandate_contents"].update(payment_mandate_id="HSKM-PR-other"), "payment_request_id")
+        self.refuse(lambda p: p["payment_mandate_contents"]["payment_details_total"]["amount"].update(value="5.00"), "amount")
+        self.refuse(lambda p: p["payment_mandate_contents"]["payment_response"]["details"].update(payment_payload="%%%"),
+                    "mandate")
+
+    def test_expired_quote_window_refused(self):
+        with self.assertRaises(firewall.Refused) as cm:
+            firewall.check(self.prep, self.exp, now=int(self.prep["eip712"]["message"]["validBefore"]))
+        self.assertEqual(cm.exception.rule, "expiry")
+
+
+class TestOrderCheck(unittest.TestCase):
+    """check_order reads the real get_order shape; a nested pay_to used to slip past a depth-first key search."""
+
+    def setUp(self):
+        self.tok = firewall.TokenRow("base-sepolia", 84532, "USDC", "0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6, "eip3009")
+        self.pay_to = "0x58232CF98671Bc0Bd0E7aaA7cd6adE9EdB2E64A6"
+        self.good = {"merchant_name": config.MERCHANT_NAME, "payment_request_id": "PR1",
+                     "payment_amount": {"currency": "USD", "value": "0.01"},
+                     "gas_fee_configs": [{"network": "base-sepolia", "gas_fee_advanced": True}],
+                     "method_data": [{"chain_id": 84532, "coin": "USDC", "contract_address": self.tok.address,
+                                      "network": "base-sepolia", "pay_to": self.pay_to, "x402Version": 2}]}
+
+    def bad(self, mutate):
+        g = copy.deepcopy(self.good)
+        mutate(g)
+        return flow.check_order(g, self.tok, self.pay_to, Decimal("0.01"), "PR1")
+
+    def test_good_order_passes(self):
+        self.assertIsNone(self.bad(lambda g: None))
+        self.assertIs(flow.gas_advanced(self.good, "base-sepolia"), True)
+        self.assertIsNone(flow.gas_advanced(self.good, "sepolia"))
+
+    def test_every_field_is_checked(self):
+        self.assertEqual(self.bad(lambda g: g["method_data"][0].update(pay_to=ATTACKER))[0], "pay_to")
+        self.assertEqual(self.bad(lambda g: g["method_data"][0].update(contract_address=ATTACKER))[0], "contract_address")
+        self.assertEqual(self.bad(lambda g: g["method_data"][0].update(chain_id=133))[0], "chain_id")
+        self.assertEqual(self.bad(lambda g: g["method_data"][0].update(network="sepolia"))[0], "network")
+        self.assertEqual(self.bad(lambda g: g.update(merchant_name="Other"))[0], "merchant_name")
+        self.assertEqual(self.bad(lambda g: g.update(payment_request_id="PR2"))[0], "payment_request_id")
+        self.assertEqual(self.bad(lambda g: g["payment_amount"].update(value="0.02"))[0], "payment_amount")
+        self.assertEqual(self.bad(lambda g: g["payment_amount"].update(value="free"))[0], "payment_amount")
+        self.assertEqual(self.bad(lambda g: g["method_data"].append(dict(g["method_data"][0])))[0], "method_data")
+        self.assertEqual(self.bad(lambda g: g.pop("method_data"))[0], "method_data")
+
+    def test_flow_stops_on_a_swapped_order(self):
+        env = MockEnv()
+        try:
+            real = mock_server.TOOLS["get_order"]
+
+            def swapped(st, a):
+                out = real(st, a)
+                out["method_data"][0]["pay_to"] = ATTACKER
+                return out
+            mock_server.TOOLS["get_order"] = swapped
+            with self.assertRaises(flow.FlowStop):
+                flow.run_payment(env.ctx, flow.select_token(env.rows), Decimal("0.01"))
+            self.assertEqual(env.calls("prepare_payment"), [])
+        finally:
+            mock_server.TOOLS["get_order"] = real
+            env.close()
+
+    def test_flow_stops_when_the_server_renames_the_payment_request(self):
+        env = MockEnv(rewrite_pr_id=True)
+        try:
+            with self.assertRaises(flow.FlowStop) as cm:
+                flow.run_payment(env.ctx, flow.select_token(env.rows), Decimal("0.01"), pr_id="HSKM-PR-from-the-seller")
+            self.assertIn("payment_request_id", cm.exception.reason)
+            self.assertEqual(env.calls("get_order"), [])
+        finally:
+            env.close()
+
+    def test_gas_advanced_tightens_the_bound(self):
+        env = MockEnv()
+        try:
+            flow.run_payment(env.ctx, flow.select_token(env.rows), Decimal("0.01"))
+            row = next(r for r in env.receipts.rows() if r["step"] == "firewall_ok")
+            self.assertEqual(row["bound_raw"], "10200")       # order + 2 %, no fee allowance: the live order says advanced
+        finally:
+            env.close()
+
+    def test_e2e_on_the_live_config_shape(self):
+        with open(os.path.join(HERE, "fixtures", "live_chain_config.json")) as f:
+            cfg = json.load(f)["config"]
+        env = MockEnv(chain_config=cfg, hex_chain_id=True)
+        try:
+            res = flow.run_payment(env.ctx, flow.select_token(env.rows, "base-sepolia", "USDC"), Decimal("0.01"),
+                                   wait_finalized=True)
+            self.assertEqual((res["status"], res["attribution_verified"]), ("payment-finalized", True))
+        finally:
+            env.close()
+
+
+class TestChainConfigError(unittest.TestCase):
+    """A non-empty config that parses to nothing is an ERROR, never 'token NONE'."""
+
+    def test_require_rows(self):
+        for cfg in ({"networks": [{"chain_id": 1}], "tokens": [{"x": 1}]}, {"weird": {"shape": [1]}}, ["a"]):
+            with self.assertRaises(flow.ChainConfigError):
+                flow.require_rows(cfg, [])
+        for empty in ({}, {"networks": [], "tokens": []}, None):
+            self.assertEqual(flow.require_rows(empty, []), [])     # a server that lists nothing is not an error
+        self.assertEqual(flow.require_rows({"a": 1}, ["row"]), ["row"])
+
+    def _probe(self, cfg, tools=8):
+        env = MockEnv()
+        env.st.chain_config = cfg
+
+        def make(ns, *a, **k):
+            return env.hsp, None, None
+        real_make, real_health = pay.make_hsp, pay.health
+        pay.make_hsp, pay.health = make, lambda *a, **k: (200, '{"status":"ok"}')
+        if os.path.exists(config.PROBE_LOG):
+            os.remove(config.PROBE_LOG)
+        wallets.create(config.PAYER_ENV, "payer")
+        with pay.State() as s:
+            s.d.clear()
+            s.d["dry_done_iso"] = "already"               # no balance read: these tests stay offline
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(pay.main(["probe"]), 0)
+                with open(config.PROBE_LOG) as f:
+                    first = f.read()
+                with pay.State() as s:
+                    s.d.pop("last_probe_ts", None)
+                self.assertEqual(pay.main(["probe"]), 0)
+            with open(config.PROBE_LOG) as f:
+                return first, f.read()[len(first):]
+        finally:
+            pay.make_hsp, pay.health = real_make, real_health
+            env.close()
+
+    def test_probe_logs_error_and_state_change_once(self):
+        first, second = self._probe({"networks": [{"chain_id": 1}], "tokens": [{"unexpected": True}]})
+        self.assertIn("probe: ERROR", first)
+        self.assertIn("*** HSP QA STATE CHANGE ***", first)
+        self.assertNotIn("NONE", first + second)
+        self.assertIn("probe: ERROR", second)                 # still an error on the next run
+        self.assertNotIn("STATE CHANGE", second)              # but only one loud line per change
+
+    def test_probe_positive_control_healthy_config(self):
+        first, second = self._probe(mock_server.default_chain_config())
+        self.assertIn("hashkey-testnet/133", first)
+        self.assertIn("*** HSP QA STATE CHANGE ***", first)
+        self.assertNotIn("ERROR", first)
+        self.assertNotIn("STATE CHANGE", second)
+
+
 class TestMcpClient(unittest.TestCase):
     def test_url_pinning(self):
         ok = mcp_client.check_url("https://mcp-qa.hashkeymerchant.com/")
@@ -458,7 +715,7 @@ class TestFlow(unittest.TestCase):
         self.assertNotIn("merchant_authorization", co["cart_mandate"])
         self.assertTrue(all(q["expected_merchant_name"] == config.MERCHANT_NAME for q in e.calls("query_payment")))
         steps = e.steps()
-        for s in ("start", "create_order", "get_order", "estimate_fee", "prepare_payment", "firewall_ok", "balance",
+        for s in ("start", "create_order", "get_order", "prepare_payment", "firewall_ok", "balance",
                   "signed", "finalize_payment", "submit_payment", "query_payment"):
             self.assertIn(s, steps)
         rows = e.receipts.rows()
