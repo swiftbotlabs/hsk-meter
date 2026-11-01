@@ -3,7 +3,7 @@
 Everything here runs through **HSP Agentic Payment**, HashKey's official server for hackathon teams
 (`https://mcp-qa.hashkeymerchant.com/`, MCP over streamable HTTP, QA environment, testnets, allowlisted by IP): real
 transactions broadcast by HSP's Gateway, attributed to the team name `Swift Bot Labs (HSK Meter)`.
-Receipts: [docs/hsp_receipts.json](../docs/hsp_receipts.json), [live table](https://swiftbotlab.github.io/hsk-meter/#hsp-h).
+Receipts: [docs/hsp_receipts.json](../docs/hsp_receipts.json), [live table](https://apps.swiftbotlab.workers.dev/hsk-meter/#hsp-h).
 
 ## The A2A flow
 

@@ -1,6 +1,6 @@
 # HSK Meter
 
-[![CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml)
+[![CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml)
 
 **One agent pays another for every API request, in USDC.e on HashKey Chain, settled on-chain per request.**
 If the seller cannot deliver after it has been paid, the payment is refunded on-chain automatically, and on the
@@ -9,7 +9,7 @@ checked the adapter-signed receipt against the buyer's signed mandate.
 
 **Real HSP payments:** 14 payments through HashKey's official HSP Agentic Payment server, 12 of them agent to
 agent, all with `attribution_verified: true`, on three testnets in HSP's QA environment.
-[Receipts below](#real-hsp-payments), [live table](https://swiftbotlab.github.io/hsk-meter/#hsp-h).
+[Receipts below](#real-hsp-payments), [live table](https://apps.swiftbotlab.workers.dev/hsk-meter/#hsp-h).
 
 By Swift Bot Labs, for the HashKey Chain Horizon Hackathon (India), track **Agent Payments & A2A Settlement**.
 
@@ -19,7 +19,7 @@ is under [At a glance](#at-a-glance).
 
 ## Try it now
 
-**No wallet? Use the [try page](https://swiftbotlab.github.io/hsk-meter/try.html):** check any payment receipt
+**No wallet? Use the [try page](https://apps.swiftbotlab.workers.dev/hsk-meter/try.html):** check any payment receipt
 (ACCEPT or REJECT, with every check), then take a real price quote and send it back changed (one character, another
 payer, another address, or unpaid) and watch the endpoint refuse each one. Its third section reads a real HSP payment
 from a public testnet node and checks it in your browser. Nothing on the page is signed or paid.
@@ -61,18 +61,18 @@ sentence lives in this repository, and how far it has been proven.
 | the Payment Agent constructs a Payment Mandate | `payment_agent.py` checks the conditions against the seller it pinned, its spend limits and `get_chain_config`, builds the Cart Mandate with the seller's `payment_request_id`, and the official MCP (`create_order`, `prepare_payment`, `finalize_payment`) returns the Payment Mandate | live |
 | completes the wallet signature | EIP-3009 `TransferWithAuthorization` signed by the payer's own key, only after the [signing firewall](hsp_qa/firewall.py) has checked HSP's reply against our order | live; `python3 hsp_qa/firewall_demo.py` refuses tampered copies of a real HSP reply |
 | verifies and executes through the existing Gateway of HSP | `submit_payment`: HSP's Gateway broadcasts the transfer (the transaction comes from HSP's relayer; the payer needs no gas token). The seller then checks it twice: `query_payment` and the token `Transfer` on a pinned RPC | live: 14 transactions, [receipts](#real-hsp-payments) |
-| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live on mainnet as its own rail: 63 transactions, 48 paid requests, 9 refunds (all endpoints, 2026-10-29); [live proof](#live-proof-on-mainnet), [public endpoint](#public-endpoint-keyless), [dashboard](https://swiftbotlab.github.io/hsk-meter/). HSP's QA server offers testnets only, so the two rails are not joined: see [what is not claimed](#real-hsp-payments) |
+| the on-chain payment, on HSK Chain mainnet | [`HskPayPerRequest` `0x78C8…7F8c`](https://hsk.blockscout.com/address/0x78C8476772BC209C3df09Da5e129d0879cd57F8c): per-request settlement in USDC.e with on-chain refunds | live on mainnet as its own rail: 63 transactions, 48 paid requests, 9 refunds (all endpoints, 2026-10-29); [live proof](#live-proof-on-mainnet), [public endpoint](#public-endpoint-keyless), [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/). HSP's QA server offers testnets only, so the two rails are not joined: see [what is not claimed](#real-hsp-payments) |
 
 ## Self-check: six judging dimensions
 
 | Dimension | What there is to check | Evidence |
 |---|---|---|
 | Track fit | every phrase of the track text maps to a component and a live run (table above), through HashKey's official HSP server | [Real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
-| Completeness | verified contract on mainnet, an always-on public endpoint you can pay, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, a receiving agent and a payment agent running over HSP | [try it now](#try-it-now), [live proof](#live-proof-on-mainnet), [dashboard](https://swiftbotlab.github.io/hsk-meter/), [video](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4) |
+| Completeness | verified contract on mainnet, an always-on public endpoint you can pay, seller, buyer CLI, MCP server, a second agent that buys from the first, live dashboard, demo video, a receiving agent and a payment agent running over HSP | [try it now](#try-it-now), [live proof](#live-proof-on-mainnet), [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/), [video](https://apps.swiftbotlab.workers.dev/hsk-meter/hsk-meter-demo.mp4) |
 | Team | Swift Bot Labs; how we work | [Team](#team) |
 | Solution value | an API can charge 0.025-0.08 USDC.e per call, settled on-chain per request, and the payment comes back automatically when delivery fails; the buyer needs no gas token | [How a request is paid](#how-a-request-is-paid) |
 | Authenticity | every number links to a transaction; what is not done is written down (HSP's gateway ran on testnets, not mainnet) | [live proof](#live-proof-on-mainnet), [real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
-| Code quality | CI on every push runs 554 tests: 411 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
+| Code quality | CI on every push runs 554 tests: 411 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
 
 ## Why it is worth backing
 
@@ -86,14 +86,14 @@ sentence lives in this repository, and how far it has been proven.
 
 ## At a glance
 
-**Live dashboard:** [swiftbotlab.github.io/hsk-meter](https://swiftbotlab.github.io/hsk-meter/) reads the contract's
+**Live dashboard:** [apps.swiftbotlab.workers.dev/hsk-meter](https://apps.swiftbotlab.workers.dev/hsk-meter/) reads the contract's
 events straight from the public explorer in your browser: totals, USDC.e per day, refund rate and the latest payments,
 each linked to its transaction.
 
 **Overview video (1:17, captions):** [YouTube](https://youtu.be/t2yyd76qRlc).
 
-**Demo video (2:54, English voice-over):** [watch in the browser](https://swiftbotlab.github.io/hsk-meter/hsk-meter-demo.mp4)
-or [download it from the v1.0.0 release](https://github.com/swiftbotlab/hsk-meter/releases/download/v1.0.0/hsk-meter-demo.mp4).
+**Demo video (2:54, English voice-over):** [watch in the browser](https://apps.swiftbotlab.workers.dev/hsk-meter/hsk-meter-demo.mp4)
+or [download it from the v1.0.0 release](https://github.com/swiftbotlabs/hsk-meter/releases/download/v1.0.0/hsk-meter-demo.mp4).
 It shows rows 24-26 of the live-proof table being paid on mainnet, the MCP buyer, a refund, the APRO price feeds and
 the KYC SBT compliant mode.
 
@@ -111,7 +111,7 @@ the KYC SBT compliant mode.
 
 Every row is a real request made over HTTP through the seller in this repository, paid by the buyer client in
 this repository. Rows 1-5 ran v0.1 at the launch prices; rows 6-23 ran the hardened v0.2 inside its sandbox, and rows
-23 and 25 were paid by an MCP client through `agent/mcp_server.py`. Rows 24-26 ran v0.3.0 for the demo video. The [dashboard](https://swiftbotlab.github.io/hsk-meter/)
+23 and 25 were paid by an MCP client through `agent/mcp_server.py`. Rows 24-26 ran v0.3.0 for the demo video. The [dashboard](https://apps.swiftbotlab.workers.dev/hsk-meter/)
 recomputes the totals from the chain.
 
 | # | Request | Payment path | Transaction |
@@ -511,7 +511,7 @@ HashKey opened the official **HSP Agentic Payment** server to hackathon teams on
 (`https://mcp-qa.hashkeymerchant.com/`, MCP, allowlisted by IP). Our IP was allowlisted, and every payment below ran
 through it under the team name `Swift Bot Labs (HSK Meter)`. Each line was re-checked with HSP and on-chain when the
 file was written. Full list with flow ids: [docs/hsp_receipts.json](docs/hsp_receipts.json),
-[live table](https://swiftbotlab.github.io/hsk-meter/#hsp-h).
+[live table](https://apps.swiftbotlab.workers.dev/hsk-meter/#hsp-h).
 
 | Time (UTC) | Network | flow_id | payment_request_id | Status | attribution_verified | Transaction |
 |---|---|---|---|---|---|---|
@@ -685,7 +685,7 @@ Implemented today (`server/hsp_draft.py`, labeled `hsp-draft/swiftbotlab-0`):
 
 ## Run the tests
 
-All of these except the `--online` and live lines run in [CI](https://github.com/swiftbotlab/hsk-meter/actions/workflows/ci.yml)
+All of these except the `--online` and live lines run in [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml)
 on every push, with the network refused (`python3 tools/ci_offline.py <suite>`; `--selftest` shows the guard working).
 
 ```sh
