@@ -123,6 +123,10 @@ found nothing; today the caller cannot tell an empty search from a filtered one.
 
 ## Issues opened on mozilla-ai/otari
 
-- [#2694](https://github.com/mozilla-ai/otari/issues/2694) Gateway-run tool fees are not held against spend ceilings, so one request can pass a key's cap (bug 1)
-- [#2695](https://github.com/mozilla-ai/otari/issues/2695) `budget_used_pct` ignores spend ceilings, so "Tier down on budget" never fires on otari.ai (bug 2)
-- [#2696](https://github.com/mozilla-ai/otari/issues/2696) otari.ai organizations cannot create service keys: `POST /organizations/me/keys` silently drops `is_service_key` (bug 3)
+All three were confirmed and fixed by the Otari maintainers:
+
+| Issue | What it was | Status |
+|---|---|---|
+| [#2694](https://github.com/mozilla-ai/otari/issues/2694) | Gateway-run tool fees are not held against spend ceilings, so one request can pass a key's cap (bug 1) | Fixed on main, closed 2026-10-30 ("it's fixed on main and will be on next otari.ai release") |
+| [#2695](https://github.com/mozilla-ai/otari/issues/2695) | `budget_used_pct` ignores spend ceilings, so "Tier down on budget" never fires on otari.ai (bug 2) | Fixed by mozilla-ai/otari#2715, closed 2026-10-30 |
+| [#2696](https://github.com/mozilla-ai/otari/issues/2696) | otari.ai organizations cannot create service keys: `POST /organizations/me/keys` silently drops `is_service_key` (bug 3) | Fixed in [51dd9de](https://github.com/mozilla-ai/otari/commit/51dd9de), closed 2026-10-31 |
