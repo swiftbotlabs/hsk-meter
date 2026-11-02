@@ -292,8 +292,8 @@ async function page(x, o = {}) {
   let ex = explorer(x, o);
   const hosts = [];
   const fetch = async (url) => {
-    const u = new URL(url, "https://swiftbotlab.github.io/hsk-meter/");
-    if (u.origin !== "https://swiftbotlab.github.io" && u.origin !== "https://hsk.blockscout.com") hosts.push(u.origin);
+    const u = new URL(url, "https://apps.swiftbotlab.workers.dev/hsk-meter/");
+    if (u.origin !== "https://apps.swiftbotlab.workers.dev" && u.origin !== "https://hsk.blockscout.com") hosts.push(u.origin);
     const [status, body] = ex.handle(u);
     return { ok: status === 200, status, headers: { get: () => null }, json: async () => JSON.parse(JSON.stringify(body)) };
   };

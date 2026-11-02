@@ -71,9 +71,9 @@ cast send ${CONTRACT} "pay(uint256,bytes32,uint256)" 1 &lt;requestId&gt; ${p1} -
 
 <h2>Links</h2>
 <ul>
-<li>Source, tests and the live proof on mainnet: <a href="${REPO}">github.com/swiftbotlab/hsk-meter</a></li>
+<li>Source, tests and the live proof on mainnet: <a href="${REPO}">github.com/swiftbotlabs/hsk-meter</a></li>
 <li>Settlement contract (verified): <a href="${EXPLORER}/address/${CONTRACT}?tab=contract">${CONTRACT}</a></li>
-<li>Live dashboard: <a href="${DASHBOARD}">swiftbotlab.github.io/hsk-meter</a></li>
+<li>Live dashboard: <a href="${DASHBOARD}">apps.swiftbotlab.workers.dev/hsk-meter</a></li>
 <li>Hackathon entry: <a href="${BUIDL}">DoraHacks BUIDL 50342</a></li>
 <li>Machine-readable terms: <a href="/.well-known/x402"><code>/.well-known/x402</code></a> · status: <a href="/health"><code>/health</code></a></li>
 </ul>

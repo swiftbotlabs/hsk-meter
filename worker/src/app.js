@@ -139,7 +139,7 @@ export async function handle(req, env, deps = {}) {
         paid: Object.keys(RESOURCES), prices: eps, asset: USDCE, network: NETWORK, contract: CONTRACT,
         free: ['/health', '/.well-known/x402', '/v1/receipt/{requestId|txHash}', '/v1/refunds'],
         how: 'GET a paid path with X-Payer -> 402 (x402 v2, scheme hsk-paywall-tx) -> approve + pay(endpointId, requestId, amount) on the contract -> retry with X-Payer, X-Paywall-Token, X-Paywall-Tx',
-        keyless: KEYLESS_NOTE, repo: 'https://github.com/swiftbotlab/hsk-meter' }];
+        keyless: KEYLESS_NOTE, repo: 'https://github.com/swiftbotlabs/hsk-meter' }];
     } else {
       [status, body] = [404, { ok: false, error: 'not_found' }];
     }

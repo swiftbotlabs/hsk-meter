@@ -654,7 +654,7 @@ test('free routes: discovery, health, home page (HTML for browsers, JSON otherwi
   ok(res.headers.get('Content-Type').startsWith('text/html'));
   ok(res.headers.get('Content-Security-Policy').includes("default-src 'none'"));
   ok(html.includes('0.03 USDC.e') && html.includes('0.025 USDC.e') && !html.includes('<script'));
-  ok(html.includes('dorahacks.io/buidl/50342') && html.includes('github.com/swiftbotlab/hsk-meter'));
+  ok(html.includes('dorahacks.io/buidl/50342') && html.includes('github.com/swiftbotlabs/hsk-meter'));
   ok(!homePage({}, '"><script>alert(1)</script>').includes('<script>alert'), 'origin is escaped');
 });
 
