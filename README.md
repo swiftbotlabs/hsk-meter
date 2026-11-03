@@ -72,7 +72,7 @@ sentence lives in this repository, and how far it has been proven.
 | Team | Swift Bot Labs; how we work | [Team](#team) |
 | Solution value | an API can charge 0.025-0.08 USDC.e per call, settled on-chain per request, and the payment comes back automatically when delivery fails; the buyer needs no gas token | [How a request is paid](#how-a-request-is-paid) |
 | Authenticity | every number links to a transaction; what is not done is written down (HSP's gateway ran on testnets, not mainnet) | [live proof](#live-proof-on-mainnet), [real HSP payments](#real-hsp-payments), [HSP_STATUS.md](HSP_STATUS.md) |
-| Code quality | CI on every push runs 554 tests: 411 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
+| Code quality | CI on every push runs 561 tests: 418 Python tests with the network refused by a guard (4 more are online-only), 53 tests of the public endpoint, 35 dashboard tests and 55 Foundry tests (unit, fuzz, invariants); guards mutation-checked; security notes per component | [CI](https://github.com/swiftbotlabs/hsk-meter/actions/workflows/ci.yml), [SECURITY.md](SECURITY.md), [Run the tests](#run-the-tests) |
 
 ## Why it is worth backing
 
