@@ -120,7 +120,7 @@ class Env:
         self.start_seller()
 
     def agent(self, **kw):
-        over = {"sleep": lambda s: None, "poll_interval": 0}
+        over = {"sleep": lambda s: None, "poll_interval": 0, **kw.pop("over", {})}
         return pa.PaymentAgent(self.buyer, self.hsp, self.rows, kw.pop("policy", self.policy), self.receipts,
                                balance_fn=lambda c, t, o: 10 ** 12, say=self.say.append, sleep=lambda s: None,
                                ctx_overrides=over, **kw)
@@ -200,6 +200,87 @@ class TestEndToEnd(Base):
             self.e.agent().buy(self.e.url, RESOURCE)
         self.assertEqual(cm.exception.info.get("rule"), "recipient")
         self.assertEqual([n for n, _ in self.e.st.calls if n == "finalize_payment"], [])
+
+
+class TestSettlingAndResume(Base):
+    """A slow or flaky gateway read never leads to a second payment; a resume only reads and claims."""
+
+    def calls(self, name):
+        return sum(1 for n, _ in self.e.st.calls if n == name)
+
+    def test_failed_reads_are_read_again_not_paid_again(self):
+        self.e.st.query_errors = 6                     # above the old limit of 5, below the payment agent's 12
+        out = self.e.agent(over={"max_query_errors": pa.DEMO_QUERY_ERRORS}).buy(self.e.url, RESOURCE)
+        self.assertEqual(out["payment"]["status"], "payment-safe")
+        self.assertEqual(self.calls("submit_payment"), 1)
+        self.assertEqual(len(self.e.st.payments), 1)
+        self.assertTrue(any("reading again" in m for m in self.e.say))
+
+    def test_positive_control_old_limit_gives_up_on_reading(self):
+        self.e.st.query_errors = 6
+        with self.assertRaises(pa.StillSettling) as cm:
+            self.e.agent().buy(self.e.url, RESOURCE)    # default limit 5: stops reading, still never pays twice
+        self.assertEqual(cm.exception.status, "query_failing")
+        self.assertEqual(self.calls("submit_payment"), 1)
+
+    def test_not_safe_in_time_is_still_settling_then_resume_serves_without_paying(self):
+        self.e.st.status_seq = ["payment-submitted", "payment-included"]          # never safe during the first run
+        with self.assertRaises(pa.StillSettling) as cm:
+            self.e.agent(over={"max_wait": 0}).buy(self.e.url, RESOURCE)
+        e = cm.exception
+        self.assertTrue(e.flow_id and e.pr_id)
+        before = {n: self.calls(n) for n in ("create_order", "prepare_payment", "finalize_payment", "submit_payment")}
+        self.assertEqual(before["submit_payment"], 1)
+        self.e.st.status_seq = ["payment-safe"]
+        out = self.e.agent().resume(self.e.url, RESOURCE, e.pr_id, replay_check=True)
+        self.assertEqual(out["payment"]["status"], "payment-safe")
+        self.assertEqual(out["replay"], {"status": 409, "error": "already_served"})
+        after = {n: self.calls(n) for n in before}
+        self.assertEqual(after, before)                                           # nothing created, prepared or sent
+        self.assertEqual(len(self.e.st.payments), 1)
+
+    def test_resume_refuses_an_id_this_wallet_never_signed(self):
+        st, body = self.e.quote()
+        with self.assertRaises(pa.Refused) as cm:
+            self.e.agent().resume(self.e.url, RESOURCE, body["conditions"]["payment_request_id"])
+        self.assertEqual(cm.exception.rule, "resume")
+        self.assertEqual(self.calls("query_payment"), 0)
+
+    def test_failed_payment_is_a_stop_not_settling(self):
+        self.e.st.status_seq = ["payment-submitted", "payment-failed"]
+        with self.assertRaises(pa.Refused) as cm:
+            self.e.agent().buy(self.e.url, RESOURCE)
+        self.assertEqual(cm.exception.rule, "not_paid")
+
+    def test_unserved_guard(self):
+        now = time.time()
+        iso = flow.utc_iso
+        rows = [{"ts": iso(now - 60), "step": "signed", "payment_request_id": "A", "flow_id": "fa"},
+                {"ts": iso(now - 50), "step": "signed", "payment_request_id": "B", "flow_id": "fb"},
+                {"ts": iso(now - 40), "step": "a2a_served", "payment_request_id": "B"},
+                {"ts": iso(now - 7200), "step": "signed", "payment_request_id": "C", "flow_id": "fc"}]
+        self.assertEqual(pa.unserved_signed(rows, now, 1800), [("A", "fa")])
+        self.assertEqual(pa.unserved_signed(rows[1:], now, 1800), [])
+        self.assertEqual(pa.signed_flow(rows, "C"), "fc")
+        self.assertIsNone(pa.signed_flow(rows, "D"))
+
+    def test_onchain_sender_names_the_relayer_only_when_listed(self):
+        relayer, other = "0x85Afd346143690AFbEc392524A8bae1e9ea8f500", "0x" + "11" * 20
+        tx = "0x" + "ab" * 32
+        ag = self.e.agent()
+        frm, link = ag.onchain_sender("arbitrum-sepolia", tx, (relayer,), rpc=lambda c, m, p: {"from": relayer.lower()})
+        self.assertEqual(link, "https://arbitrum-sepolia.blockscout.com/tx/" + tx)
+        self.assertTrue(any("HSP's relayer" in m for m in self.e.say))
+        self.e.say.clear()
+        ag.onchain_sender("arbitrum-sepolia", tx, (relayer,), rpc=lambda c, m, p: {"from": other})
+        self.assertTrue(any("not an address HSP's config lists" in m for m in self.e.say))
+        self.e.say.clear()
+
+        def down(c, m, p):
+            raise chain_rpc.ChainError("RPC call failed: timeout")
+        frm, link = ag.onchain_sender("arbitrum-sepolia", tx, (relayer,), rpc=down)
+        self.assertIsNone(frm)
+        self.assertTrue(link and any("explorer" in m for m in self.e.say))
 
 
 class TestSellerRefusals(Base):

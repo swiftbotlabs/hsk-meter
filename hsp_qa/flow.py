@@ -420,6 +420,8 @@ class Ctx:
     max_wait: float = config.MAX_WAIT_S
     out: Callable[[str], None] = print
     extra_permit2_spenders: tuple = ()
+    max_query_errors: int = 5                 # consecutive failed reads before poll() gives up (never resubmits)
+    settle_note_s: float = 0                  # > 0: say once, after this long, that the payment is still settling
 
 
 def container_with(obj, key, depth=0):
@@ -718,17 +720,23 @@ def poll(ctx, ids, base=None, *, wait_finalized=False, max_wait=None):
     max_wait = ctx.max_wait if max_wait is None else max_wait
     R = ctx.receipts
     start = ctx.clock()
-    last_status, reported_pending, errors = None, False, 0
+    last_status, reported_pending, errors, noted = None, False, 0, False
     last = {}
     while True:
+        elapsed = ctx.clock() - start
+        if ctx.settle_note_s and elapsed >= ctx.settle_note_s and not noted:
+            ctx.out(f"still settling after {int(elapsed)} s (last status {last_status or 'none yet'}): "
+                    f"flow_id={ids['flow_id']} payment_request_id={ids['payment_request_id']}; "
+                    "it was submitted once and is only being read, never sent again")
+            noted = True
         try:
             q = query_once(ctx, ids)
             errors = 0
         except (HspError, McpError) as e:
             errors += 1
             R.log("query_error", **base, **ids, error=str(e), consecutive=errors)
-            ctx.out(f"query_payment failed: {e}")
-            if errors >= 5 or max_wait == 0:
+            ctx.out(f"query_payment failed ({errors}/{ctx.max_query_errors}): {_snip(str(e), 120)}; reading again")
+            if errors >= ctx.max_query_errors or max_wait == 0 or elapsed >= max_wait:
                 return {"status": "query_failing", **ids, **last}
             ctx.sleep(ctx.poll_interval)
             continue

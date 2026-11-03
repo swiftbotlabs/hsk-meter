@@ -108,7 +108,7 @@
     }
     return out;
   }
-  async function checkReceipt() {
+  async function checkReceipt(fromLink) {
     const box = $('r-out');
     const id = $('r-id').value.trim();
     if (!B32.test(id)) return show(box, [el('p', 'try-err', 'Enter 0x followed by 64 hex characters (a transaction hash or a requestId).')]);
@@ -120,9 +120,24 @@
     show(box, [el('p', 'try-wait', 'Reading HashKey Chain…')]);
     const res = await get(API + '/v1/receipt/' + id.toLowerCase() + (q.toString() ? '?' + q : ''));
     if (res.status !== 200 || !res.body || !res.body.verdict) return show(box, [failNode(res)]);
-    show(box, receiptNodes(res.body));
+    const nodes = receiptNodes(res.body);
+    if (fromLink) nodes.unshift(el('p', 'try-wait', 'Checked from the link you opened: ' + id.slice(0, 10) + '…' + id.slice(-6)));
+    show(box, nodes);
   }
   $('r-form').addEventListener('submit', (e) => { e.preventDefault(); checkReceipt(); });
+
+  /* A shared link or QR code can name the receipt: ?tx=0x… or ?id=0x… (also after #). Only 0x + 64 hex characters is
+     used; anything else is ignored and the page stays as it is. The value only ever reaches .value and textContent. */
+  function linkedId() {
+    const pick = (s) => { try { const q = new URLSearchParams(s); return q.get('tx') || q.get('id'); } catch (e) { return null; } };
+    const v = pick(location.search) || (location.hash.length > 1 ? pick(location.hash.slice(1)) : null);
+    return typeof v === 'string' && v.length === 66 && B32.test(v) ? v.toLowerCase() : null;
+  }
+  const linked = linkedId();
+  if (linked) {
+    $('r-id').value = linked;
+    checkReceipt(true).then(() => { try { $('r-out').scrollIntoView({ block: 'start' }); } catch (e) { /* old browsers */ } });
+  }
   for (const b of document.querySelectorAll('[data-sample]')) {
     b.addEventListener('click', () => {
       const s = SAMPLES[b.dataset.sample];

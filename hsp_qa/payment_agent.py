@@ -9,7 +9,13 @@
   4. Wait for payment-safe, then claim with a proof that we hold the paying wallet. The seller verifies on its own.
 
   payment_agent.py --seller 0x... --address 0x... [--url http://127.0.0.1:8411] [--network base-sepolia]
-                   [--max-usd 0.05] [--session-cap 0.25] [--replay-check]
+                   [--max-usd 0.05] [--session-cap 0.25] [--replay-check] [--max-wait 1800]
+                   [--refuse-unserved-within SECONDS] [--resume PAYMENT_REQUEST_ID]
+
+  Exit codes: 0 paid and served; 2 stopped (nothing paid, or HSP says the payment failed); 3 still settling (paid once,
+  not yet safe or not yet served: run again with --resume <payment_request_id>, which only reads and claims).
+  --resume never creates an order and never signs: it reads HSP for a payment this wallet already signed, then claims.
+  --refuse-unserved-within refuses a NEW purchase while a payment signed in that window has not been served yet.
 """
 import argparse
 import http.client
@@ -41,6 +47,14 @@ COND_KEYS = {"type", "merchant_name", "pay_to", "amount", "network", "chain_id",
 MIN_TIME_LEFT_S = 60
 CLAIM_TRIES = 12
 CLAIM_WAIT_S = 15
+SETTLE_NOTE_S = 60                # say "still settling" with the identifiers after this long
+DEMO_QUERY_ERRORS = 12            # consecutive failed HSP reads (15 s apart) before giving up on reading
+EXPLORER_TX = {"arbitrum-sepolia": "https://arbitrum-sepolia.blockscout.com/tx/",
+               "base-sepolia": "https://base-sepolia.blockscout.com/tx/",
+               "sepolia": "https://eth-sepolia.blockscout.com/tx/",
+               "hashkey-testnet": "https://testnet-explorer.hskchain.net/tx/"}
+SIGNED_STEPS = ("signed",)
+SERVED_STEPS = ("a2a_served",)
 
 
 class Refused(Exception):
@@ -49,6 +63,38 @@ class Refused(Exception):
     def __init__(self, rule, detail):
         super().__init__(f"{rule}: {detail}")
         self.rule, self.detail = rule, detail
+
+
+class StillSettling(Exception):
+    """Paid once (submitted), but not yet payment-safe or not yet served. Resume reads and claims; it never pays."""
+
+    def __init__(self, flow_id, pr_id, status, why):
+        super().__init__(f"{why}: status {status}, flow_id {flow_id}, payment_request_id {pr_id}")
+        self.flow_id, self.pr_id, self.status, self.why = flow_id, pr_id, status, why
+
+
+def unserved_signed(rows, now, window_s):
+    """payment_request_ids this wallet signed for within window_s seconds and that were never served."""
+    signed, served = {}, set()
+    for r in rows:
+        pr = r.get("payment_request_id")
+        if not isinstance(pr, str):
+            continue
+        if r.get("step") in SERVED_STEPS:
+            served.add(pr)
+        elif r.get("step") in SIGNED_STEPS:
+            ts = flow._rfc(r.get("ts"))
+            if ts is not None and now - ts <= window_s:
+                signed[pr] = r.get("flow_id")
+    return [(pr, fid) for pr, fid in signed.items() if pr not in served]
+
+
+def signed_flow(rows, pr_id):
+    """flow_id of a payment this wallet signed for pr_id, or None. A resume is only allowed for such an id."""
+    for r in rows:
+        if r.get("payment_request_id") == pr_id and r.get("step") in SIGNED_STEPS and isinstance(r.get("flow_id"), str):
+            return r["flow_id"]
+    return None
 
 
 @dataclass
@@ -181,10 +227,38 @@ class PaymentAgent:
                                    cap_usd=self.policy.max_usd * (1 + config.PRICE_SLACK), fee_allowance_usd=Decimal(0))
         finally:
             self.spent += self.receipts.committed_usd(pr_id)    # every signature counts, also a re-signed quote
-        if res.get("status") not in config.PAID_STATUSES or res.get("attribution_verified") is not True:
-            self.receipts.log("a2a_unpaid", payment_request_id=pr_id, status=res.get("status"))
-            raise Refused("not_paid", f"HSP status {res.get('status')}, flow_id {res.get('flow_id')}")
-        self.say(f"[4/5] HSP Gateway executed it: {res['status']}, attribution_verified true, tx {res.get('tx_signature')}")
+        self._settled(res, pr_id)
+        return self.claim(url, resource, pr_id, res["flow_id"], replay_check)
+
+    def _settled(self, res, pr_id):
+        """Raise unless HSP reports payment-safe/-finalized with attribution_verified true."""
+        status = res.get("status")
+        if status in config.PAID_STATUSES and res.get("attribution_verified") is True:
+            self.say(f"[4/5] HSP Gateway executed it: {status}, attribution_verified true, tx {res.get('tx_signature')}")
+            return
+        self.receipts.log("a2a_unpaid", payment_request_id=pr_id, status=status)
+        if status in config.PAID_STATUSES:
+            raise Refused("attribution", f"HSP status {status} but attribution_verified is "
+                                         f"{res.get('attribution_verified')}, flow_id {res.get('flow_id')}")
+        if status == "payment-failed" or status not in config.POLLING_STATUSES | {"query_failing", "unknown", None}:
+            raise Refused("not_paid", f"HSP status {status}, flow_id {res.get('flow_id')}")
+        raise StillSettling(res.get("flow_id"), pr_id, status, "not payment-safe yet")
+
+    def resume(self, url, resource, pr_id, replay_check=False):
+        """Finish a payment this wallet already signed: read HSP, then claim. Never creates an order, never signs."""
+        flow_id = signed_flow(self.receipts.rows(), pr_id)
+        if flow_id is None:
+            raise Refused("resume", "this wallet never signed a payment for that payment_request_id")
+        self.say(f"[resume] reading HSP for flow_id {flow_id}, payment_request_id {pr_id} (no new order, no signature)")
+        ctx = flow.Ctx(hsp=self.hsp, account=self.account, pay_to=self.policy.seller, receipts=self.receipts,
+                       approve=lambda *a: False, balance_fn=None, out=lambda m: self.say("      " + m))
+        for k, v in self.ctx_overrides.items():
+            setattr(ctx, k, v)
+        res = flow.poll(ctx, {"flow_id": flow_id, "payment_request_id": pr_id})
+        self._settled(res, pr_id)
+        return self.claim(url, resource, pr_id, flow_id, replay_check)
+
+    def claim(self, url, resource, pr_id, flow_id, replay_check=False):
         st, out = None, None
         for _ in range(CLAIM_TRIES):
             try:
@@ -207,9 +281,12 @@ class PaymentAgent:
             and ra.TX_RE.match(str(out["payment"].get("tx")))
         if not paid_ok:
             self.receipts.log("a2a_claim_failed", payment_request_id=pr_id, status=st)
+            rule = out.get("error") if isinstance(out, dict) else None
+            if st in (402, 502, 503) and rule in ("not_paid_yet", "gateway_unavailable", None):
+                raise StillSettling(flow_id, pr_id, f"seller {st} {flow._snip(str(rule), 40)}", "paid, not served yet")
             raise Refused("claim_failed", f"the seller answered {st}: {flow._snip(str(out), 200)}")
         depth = out["payment"].get("confirmations")
-        self.receipts.log("a2a_served", payment_request_id=pr_id, flow_id=res["flow_id"], resource=resource,
+        self.receipts.log("a2a_served", payment_request_id=pr_id, flow_id=flow_id, resource=resource,
                           tx_signature=out["payment"]["tx"], seller_confirmations=depth)
         self.say(f"[5/5] paid data served once, after the seller's own check on-chain: {flow._snip(str(depth), 20)} confirmations")
         if replay_check:
@@ -218,6 +295,25 @@ class PaymentAgent:
             self.say(f"      same claim again: {st2} {err}")
             out["replay"] = {"status": st2, "error": err}
         return out
+
+    def onchain_sender(self, network, tx, spenders, rpc=chain.rpc):
+        """Read who broadcast the payment from the pinned testnet RPC; label HSP's relayer from get_chain_config."""
+        cid = config.A2A_TOKENS.get(network, (None,))[0]
+        link = EXPLORER_TX.get(network, "") + tx if network in EXPLORER_TX else None
+        frm = None
+        if cid is not None and ra.TX_RE.match(str(tx)):
+            try:
+                t = rpc(cid, "eth_getTransactionByHash", [tx])
+                frm = t.get("from") if isinstance(t, dict) else None
+            except Exception as e:      # chain.ChainError or transport: the explorer link still works
+                self.say(f"      on-chain read failed ({type(e).__name__}); open the explorer link")
+        if isinstance(frm, str) and firewall.ADDR_RE.match(frm):
+            who = "HSP's relayer (listed in get_chain_config)" if frm.lower() in {a.lower() for a in spenders} \
+                else "not an address HSP's config lists"
+            self.say(f"      on-chain: sent by {frm}, {who}; the payer paid no gas")
+        if link:
+            self.say(f"      explorer: {link}")
+        return frm, link
 
 
 def main():
@@ -229,12 +325,38 @@ def main():
     ap.add_argument("--max-usd", default="0.05")
     ap.add_argument("--session-cap", default="0.25")
     ap.add_argument("--replay-check", action="store_true")
+    ap.add_argument("--max-wait", type=int, default=config.MAX_WAIT_S, help="seconds to keep reading HSP (30..3600)")
+    ap.add_argument("--refuse-unserved-within", type=int, default=0, metavar="SECONDS",
+                    help="refuse a new purchase while a payment signed this recently is unserved (0 = off)")
+    ap.add_argument("--resume", metavar="PAYMENT_REQUEST_ID", help="read + claim a payment already signed; never pays")
     args = ap.parse_args()
     if not re.fullmatch(r"0x[0-9a-fA-F]{40}", args.address) or not re.fullmatch(r"0x[0-9a-fA-F]{40}", args.seller):
         raise SystemExit("--seller and --address must be 0x + 40 hex characters")
+    if not 30 <= args.max_wait <= 3600 or not 0 <= args.refuse_unserved_within <= 86400:
+        raise SystemExit("--max-wait must be 30..3600 and --refuse-unserved-within 0..86400")
+    if args.resume is not None and not ra.ID_RE.match(args.resume):
+        raise SystemExit("--resume takes a payment_request_id")
+    if args.network not in EXPLORER_TX:
+        raise SystemExit(f"--network must be one of {', '.join(sorted(EXPLORER_TX))}")
     resource = f"GET /v1/address-profile?address={args.address.lower()}"
     url = args.url.rstrip("/") + "/v1/address-profile?" + urllib.parse.urlencode(
         {"address": args.address.lower(), "network": args.network})
+    receipts = flow.Receipts(config.RECEIPTS_LIVE, "live")
+    t0 = time.time()
+
+    def say(m):
+        print(f"{flow.utc_iso()} +{time.time() - t0:5.1f}s [payment agent] {m}", flush=True)
+
+    if args.resume is not None and signed_flow(receipts.rows(), args.resume) is None:
+        say(f"REFUSED: this wallet never signed a payment for {args.resume}; --resume only finishes our own payments")
+        return 2
+    if args.resume is None and args.refuse_unserved_within:
+        open_ids = unserved_signed(receipts.rows(), time.time(), args.refuse_unserved_within)
+        if open_ids:
+            pr, fid = open_ids[-1]
+            say(f"REFUSED: a payment signed in the last {args.refuse_unserved_within // 60} min is not served yet "
+                f"(flow_id {fid}, payment_request_id {pr}). Paying again would pay twice. Finish it with --resume {pr}")
+            return 2
     account = wallets.load_payer()
     hsp = flow.Hsp(McpClient(config.MCP_URL))
     hsp.discover()
@@ -242,13 +364,24 @@ def main():
     rows, rejects = flow.parse_chain_config(cfg)
     flow.require_rows(cfg, rows, rejects)
     policy = Policy(seller=args.seller, max_usd=Decimal(args.max_usd), session_cap_usd=Decimal(args.session_cap))
-    agent = PaymentAgent(account, hsp, rows, policy, flow.Receipts(config.RECEIPTS_LIVE, "live"),
-                         say=lambda m: print(f"{flow.utc_iso()} [payment agent] {m}", flush=True))
+    agent = PaymentAgent(account, hsp, rows, policy, receipts, say=say,
+                         ctx_overrides={"max_wait": args.max_wait, "max_query_errors": DEMO_QUERY_ERRORS,
+                                        "settle_note_s": SETTLE_NOTE_S})
     try:
-        out = agent.buy(url, resource, replay_check=args.replay_check)
+        if args.resume is not None:
+            out = agent.resume(url, resource, args.resume, replay_check=args.replay_check)
+        else:
+            out = agent.buy(url, resource, replay_check=args.replay_check)
+    except StillSettling as e:
+        say(f"STILL SETTLING ({e.why}, {e.status}). Paid once; nothing will be sent again. flow_id {e.flow_id}")
+        say(f"finish it later (reads + claims only): --resume {e.pr_id}")
+        return 3
     except (Refused, flow.FlowStop, flow.HspError, flow.SchemaMismatch, McpError, firewall.Refused) as e:
-        print(f"{flow.utc_iso()} [payment agent] STOP {type(e).__name__}: {e}", flush=True)
+        say(f"STOP {type(e).__name__}: {e}")
         return 2
+    tx = out["payment"]["tx"]
+    token = next((r for r in rows if r.network == args.network), None)
+    agent.onchain_sender(args.network, tx, token.spenders if token else ())
     print(json.dumps(out, indent=1)[:4000])    # the seller's answer is untrusted text: capped, JSON-escaped
     return 0
 
