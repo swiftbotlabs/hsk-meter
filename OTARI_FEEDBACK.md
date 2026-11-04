@@ -130,3 +130,14 @@ All three were confirmed and fixed by the Otari maintainers:
 | [#2694](https://github.com/mozilla-ai/otari/issues/2694) | Gateway-run tool fees are not held against spend ceilings, so one request can pass a key's cap (bug 1) | Fixed on main, closed 2026-10-30 ("it's fixed on main and will be on next otari.ai release") |
 | [#2695](https://github.com/mozilla-ai/otari/issues/2695) | `budget_used_pct` ignores spend ceilings, so "Tier down on budget" never fires on otari.ai (bug 2) | Fixed by mozilla-ai/otari#2715, closed 2026-10-30 |
 | [#2696](https://github.com/mozilla-ai/otari/issues/2696) | otari.ai organizations cannot create service keys: `POST /organizations/me/keys` silently drops `is_service_key` (bug 3) | Fixed in [51dd9de](https://github.com/mozilla-ai/otari/commit/51dd9de), closed 2026-10-31 |
+
+### Re-checked on the live otari.ai gateway, 4 Nov 2026
+
+- **Bug 3 is fixed in production.** The same `POST /api/v1/organizations/me/keys` call with `is_service_key: true` and one
+  end-user budget now returns `200` with `is_service_key: true` and the budget attached. The request body is also
+  validated now: a budget id of the wrong type gets a `422` that names the field, and an unknown budget a `404`. Our test
+  key was deleted right after (`204`).
+- **Bug 4 is fixed in the docs.** The Quickstart and the multi-provider routing guide on docs.otari.ai now use
+  `https://api.otari.ai/api/v1`. The old `/v1` path still answers `404`, with a message that names the right path.
+- Bugs 1 and 2 are fixed on main. We have not re-measured them on otari.ai, because that needs paid tool calls against a
+  ceiling; we will rerun the original steps when the release notes list them.
