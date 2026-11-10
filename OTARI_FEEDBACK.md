@@ -141,3 +141,16 @@ All three were confirmed and fixed by the Otari maintainers:
   `https://api.otari.ai/api/v1`. The old `/v1` path still answers `404`, with a message that names the right path.
 - Bugs 1 and 2 are fixed on main. We have not re-measured them on otari.ai, because that needs paid tool calls against a
   ceiling; we will rerun the original steps when the release notes list them.
+
+### Re-checked on the live otari.ai gateway, 10 Nov 2026
+
+- **Bug 6 still reproduces, with a better message.** `POST /api/v1/search {"query": "..."}` with a workspace API key still
+  answers `400`, but the detail now says how to fix it: "No search tools are configured. Add one on the dashboard's
+  Tools & Guardrails page (or POST /api/v1/search-tools), or declare one under 'search_tools' in your config file".
+- **New, small: the suggested API route is not open to hosted users.** `GET /api/v1/search-tools` with the same
+  workspace key answers `401 {"detail": "Invalid master key"}`, so on otari.ai only the dashboard route in that message
+  works. Naming the dashboard first for hosted users (or saying the API route needs a self-hosted master key) would save
+  a dead end.
+- **About the issue links above:** the three issues were filed from our previous GitHub account, which is no longer
+  active, so GitHub now shows them as 404. The full text of each is in "Bugs, with steps" above, and the maintainers'
+  fixes are public: pull request #2715 and commit 51dd9de.
